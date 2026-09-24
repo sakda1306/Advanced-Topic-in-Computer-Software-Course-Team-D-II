@@ -23,7 +23,6 @@
 | คลัง `football_trivia_qa.txt` 1,996 ข้อ 14 หมวด + `golden_set.json` | repo เดียวกัน | Knowledge Base ส่วนที่ 1 + ชุดวัดผล retrieval ตั้งแต่วันแรก |
 | ตัวแก้ 5 ปัญหาจาก week5 | `week5/DL-05-RAG System Development II` | ต้องติดมาใน 05/03 ทุกข้อ (ดูหัวข้อ 7) |
 | API Backend ของ Travel Safety — FastAPI, JWT, Problem-JSON, request context, rate limit, Celery + Redis, Postgres, AgentClient (deadline / retry / circuit breaker), conversations, feedback | `sakda1306/Advanced-Topic-in-Computer-Software-Course-Team-D` → `DL-07.../02_api_backend` | แม่แบบของ `02_api_backend` (ตัดส่วนที่ไม่จำเป็นออก ดูหัวข้อ 5) |
-| วิธีทำงานเป็นทีมแบบ contract + stub | งานทีมอ้างอิง chuayduay | `CONTRACT.md`, `GIT_FLOW.md`, `SCHEDULE.md` |
 
 ## 3. สถาปัตยกรรม — map กับผังของอาจารย์ทีละกล่อง
 
