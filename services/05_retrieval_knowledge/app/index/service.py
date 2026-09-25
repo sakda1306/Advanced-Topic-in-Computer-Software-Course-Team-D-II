@@ -3,16 +3,22 @@
 An upsert is all or nothing: chunks are embedded and the new snapshot is built before
 anything is written, the store is written in one transaction, and only then is the new
 snapshot swapped in. If any step fails, the store and the snapshot that searches use are
-both unchanged.
+both unchanged. A delete follows the same order.
+
+Once a write has started it runs to the end even if its caller is cancelled (shutdown,
+a dropped request): the worker thread cannot be stopped halfway, so stopping only the
+coroutine could leave SQLite written and the snapshot not swapped. `drain()` waits for
+such writes; the app calls it before closing the store.
 """
 
 from __future__ import annotations
 
 import asyncio
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from typing import TypeVar
 
 import numpy as np
 
@@ -27,12 +33,33 @@ from app.search.tokenize import tokenize
 
 log = get_logger(__name__)
 
+T = TypeVar("T")
+
 
 @dataclass(frozen=True, slots=True)
 class UpsertResult:
     upserted: int
     chunks: int
     index_version: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class IndexStats:
+    documents: int
+    chunks: int
+    by_category: dict[str, int]  # documents per category
+    index_version: str | None
+
+
+def index_stats(snapshot: Snapshot) -> IndexStats:
+    """Counts from the snapshot, which holds the same chunks as the store (CONTRACT §6)."""
+    documents = {r.document.doc_id: r.document.category for r in snapshot.records}
+    return IndexStats(
+        documents=len(documents),
+        chunks=snapshot.size,
+        by_category=dict(Counter(documents.values())),
+        index_version=snapshot.index_version,
+    )
 
 
 def _indexed(chunk: Chunk, document: Document, embedding: np.ndarray) -> IndexedChunk:
@@ -52,21 +79,50 @@ class IndexService:
         self._clock = clock
         self._lock = asyncio.Lock()
         self._snapshot: Snapshot | None = None
+        self._running: set[asyncio.Task[object]] = set()
 
     @property
     def snapshot(self) -> Snapshot | None:
         return self._snapshot
 
+    async def drain(self) -> None:
+        """Wait for loads and writes already started; call before closing the store."""
+        while self._running:
+            await asyncio.gather(*self._running, return_exceptions=True)
+
+    async def _to_the_end(self, work: Awaitable[T]) -> T:
+        task: asyncio.Task[T] = asyncio.ensure_future(work)
+        self._running.add(task)  # type: ignore[arg-type]
+        task.add_done_callback(self._running.discard)  # type: ignore[arg-type]
+        return await asyncio.shield(task)
+
     async def load(self) -> None:
+        await self._to_the_end(self._load())
+
+    async def upsert(self, documents: Sequence[Document]) -> UpsertResult:
+        return await self._to_the_end(self._upsert(documents))
+
+    async def delete(self, doc_id: str) -> bool:
+        """Remove a document; False, with nothing changed, when it is not in the index."""
+        return await self._to_the_end(self._delete(doc_id))
+
+    async def _load(self) -> None:
         async with self._lock:
             self._snapshot = await asyncio.to_thread(self._load_sync)
 
-    async def upsert(self, documents: Sequence[Document]) -> UpsertResult:
+    async def _upsert(self, documents: Sequence[Document]) -> UpsertResult:
         async with self._lock:
             current = self._snapshot or await asyncio.to_thread(self._load_sync)
             snapshot, result = await asyncio.to_thread(self._upsert_sync, current, documents)
             self._snapshot = snapshot
             return result
+
+    async def _delete(self, doc_id: str) -> bool:
+        async with self._lock:
+            current = self._snapshot or await asyncio.to_thread(self._load_sync)
+            snapshot = await asyncio.to_thread(self._delete_sync, current, doc_id)
+            self._snapshot = snapshot or current
+            return snapshot is not None
 
     def _load_sync(self) -> Snapshot:
         stored = self._store.load_all()
@@ -121,3 +177,14 @@ class IndexService:
         )
         log.info("index_updated", documents=len(changed), chunks=len(flat), index_version=version)
         return snapshot, UpsertResult(len(latest), total, version)
+
+    def _delete_sync(self, current: Snapshot, doc_id: str) -> Snapshot | None:
+        records = [r for r in current.records if r.chunk.doc_id != doc_id]
+        if len(records) == len(current.records):
+            return None
+        version = version_stamp(self._clock())
+        # Built before the write: if it fails, the store never sees the change.
+        snapshot = Snapshot(records, dimension=self._embedder.dimension, index_version=version)
+        self._store.delete_document(doc_id, meta={META_VERSION: version})
+        log.info("index_document_deleted", doc_id=doc_id, index_version=version)
+        return snapshot

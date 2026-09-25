@@ -111,13 +111,17 @@ services/05_retrieval_knowledge/
 
 ### `POST /index/upsert`
 - ตรวจ: `category` / `origin` อยู่ใน enum · `doc_id` ตรงรูปแบบของ category ตามตาราง §6 · `text` ไม่ว่าง · ≤ 100 เอกสารต่อคำขอ · ผิด → 422 ทั้งคำขอ
-- ทำทั้งคำขอเป็นก้อนเดียวใต้ lock: `content_hash` ไม่เปลี่ยน → ข้าม · ตัด chunk + embed เอกสารที่เปลี่ยน **ก่อนเขียน** → SQLite transaction เดียว (แทน chunk เดิมของ doc_id นั้นทั้งหมด) → สร้าง snapshot ใหม่ → สลับ → `index_version` = เวลาปัจจุบัน (+07:00)
+- ทำทั้งคำขอเป็นก้อนเดียวใต้ lock: `content_hash` ไม่เปลี่ยน → ข้าม · ตัด chunk + embed เอกสารที่เปลี่ยน และสร้าง snapshot ใหม่ **ก่อนเขียน** → SQLite transaction เดียว (แทน chunk เดิมของ doc_id นั้นทั้งหมด) → สลับ snapshot → `index_version` = เวลาปัจจุบัน (+07:00)
 - ขั้นไหนล้ม → 500 และไม่มีอะไรเปลี่ยน ทั้ง SQLite และ snapshot ที่ใช้ค้นอยู่
+- index ยังโหลดไม่เสร็จ → 503 `INDEX_NOT_READY` (ใช้กับ DELETE ด้วย) · ไม่รอ lock ของการโหลด เพราะโหลดอาจนานกว่า timeout 30 s ของ 07 · 07 ถือเป็น job ล้มแล้ว retry
+- เริ่มเขียนแล้วทำจนจบแม้ผู้เรียกถูกยกเลิก: thread ที่เขียน SQLite หยุดกลางทางไม่ได้ ถ้าหยุดแค่ coroutine SQLite จะถูกเขียนแต่ snapshot ไม่ถูกสลับ · ตอนปิด service `drain()` รองานเหล่านี้ก่อนปิด SQLite
 - ตอบ `{request_id, upserted, chunks, index_version}` · `upserted` = จำนวนเอกสารที่รับ (รวมที่ไม่เปลี่ยน) · ไม่มีอะไรเปลี่ยน → `index_version` เดิม
 
 ### `DELETE /index/{doc_id}` → `{deleted: true | false}` (200) · ใช้ lock เดียวกัน
+- ลำดับเดียวกับ upsert: สร้าง snapshot ที่ไม่มีเอกสารนั้นก่อน → ลบใน SQLite transaction เดียว → สลับ · ไม่มีเอกสาร → `false` และ `index_version` เดิม
 
 ### `GET /index/stats` → `{documents, chunks, by_category, index_version}`
+- นับจาก snapshot (ตรงกับ SQLite โดยโครงสร้าง) · `by_category` = จำนวน**เอกสาร**ต่อ category · index ยังไม่พร้อม → 503 `INDEX_NOT_READY`
 
 ### `POST /index/rebuild` + `GET /index/jobs/{job_id}`
 - รับ `{request_id, category?}` → `202 {job_id}` · ทำใน background: ตัด chunk + embed ใหม่จากข้อความใน SQLite แล้วสลับทีเดียว · ระหว่างนั้น `/search` ใช้ index เดิม
@@ -131,8 +135,11 @@ services/05_retrieval_knowledge/
 - ไม่เขียน snapshot ลงดิสก์ — ตอนเริ่มระบบสร้างจาก SQLite (embedding ที่เก็บไว้)
 
 ### ชื่อเล่นทีม
-- `GET /football/teams` ของ 07 · timeout 3 วินาที · cache `ALIASES_CACHE_SECONDS` (3600)
-- ดึงไม่ได้ → `data/team_aliases.json` · พักไม่เรียก 07 เป็นเวลา 60 วินาที ไม่ให้ `/search` ช้า
+- task เบื้องหลังใน lifespan ดึง `GET /football/teams` ของ 07 ทุก `ALIASES_CACHE_SECONDS` (3600) · timeout 3 วินาที · ดึงไม่ได้ลองใหม่ใน `ALIASES_RETRY_SECONDS` (60)
+- `/search` อ่านชุดชื่อเล่นปัจจุบันเสมอ **ไม่เคยรอ 07** แม้ตอน cache หมดอายุ (เดิมออกแบบให้ `/search` เรียก 07 เองแล้วพัก 60 วินาทีเมื่อล้ม — เปลี่ยนเพราะแบบนี้ไม่มีคำขอไหนช้าเพราะ 07 และไม่ต้องมี circuit breaker)
+- ก่อน 07 ตอบ ใช้ `data/team_aliases.json` · 07 ล่ม / ตอบรูปแบบผิด / ไม่มี alias เลย → ใช้ชุดเดิมต่อ ไม่ทับด้วยชุดว่าง
+- ชุดของ 07 **รวม** กับไฟล์สำรองตาม `team_id` ไม่ใช่แทนทั้งชุด: ชื่อทางการใช้ของ 07 · ชื่อเล่นเก็บทั้งสองแหล่ง · ทีมที่มีแค่ในไฟล์สำรองยังอยู่ (รีวิว #8: 07 มีชื่อเล่นไทยแค่ 8 ทีม)
+- `FOOTBALL_DATA_URL` ว่าง = ไม่ดึง ใช้ไฟล์สำรองอย่างเดียว (เทสและ CI)
 
 ### health
 - `GET /health` → 200 ตาม §0 เสมอ
@@ -161,7 +168,7 @@ services/05_retrieval_knowledge/
 | `MIN_VECTOR_SCORE` | `0.0` | 0 = ปิด · MiniLM ให้ cosine ไทย-อังกฤษต่ำ (ราว 0.26) ค่าจริงมาจาก eval |
 | `CANDIDATE_K` / `RRF_K` | `20` / `60` | |
 | `FOOTBALL_DATA_URL` | `http://football-data:8000` | ใช้ดึงชื่อเล่นทีม |
-| `ALIASES_CACHE_SECONDS` | `3600` | |
+| `ALIASES_CACHE_SECONDS` · `ALIASES_RETRY_SECONDS` · `ALIASES_TIMEOUT_SECONDS` | `3600` · `60` · `3` | ว่าง `FOOTBALL_DATA_URL` = ไม่ดึงจาก 07 |
 | `GIT_SHA` / `LOG_LEVEL` | `0.1.0` / `INFO` | |
 
 ---
@@ -191,9 +198,10 @@ services/05_retrieval_knowledge/
 | PR | เนื้อหา | ปลดล็อก | วัน |
 |---|---|---|---|
 | ① | โครง service · SQLite · ingest trivia · snapshot · `/search` ครบทุกโหมด + filter + ชื่อเล่นจากไฟล์ + rerank flag · `/health` · `/ready` · เทส · CI | 03, 06 | D3 |
-| ② | `/index/upsert` · `DELETE /index/{doc_id}` · `/index/stats` · `/index/rebuild` · `/index/jobs/{job_id}` · ดึงชื่อเล่นจาก 07 | 07 | D4 |
+| ②a | `/index/upsert` · `DELETE /index/{doc_id}` · `/index/stats` · ดึงชื่อเล่นจาก 07 | 07 | D4 |
+| ②b | `/index/rebuild` · `/index/jobs/{job_id}` (Could) | – | D4 |
 | ③ | golden sets · eval script · ตัวเลขใน README | – | D5 |
-| CONTRACT (แยก) | §7 เพิ่ม retrieval เป็นผู้เรียก `GET /football/teams` · §4 / §6 เพิ่ม `INDEX_NOT_READY` (503) | – | ก่อน PR ② |
+| CONTRACT (แยก) | §7 เพิ่ม retrieval เป็นผู้เรียก `GET /football/teams` · §4 / §6 เพิ่ม `INDEX_NOT_READY` (503) | – | คู่กับ PR ②a |
 
 ทุก PR เข้า `develop` ให้ member6 รีวิว (GIT_FLOW §2)
 

@@ -164,6 +164,19 @@ class KnowledgeStore:
                 )
             self._conn.executemany(_UPSERT_META, list(meta.items()))
 
+    def delete_document(self, doc_id: str, *, meta: Mapping[str, str]) -> bool:
+        """Delete a document and its chunks, and set meta, in one transaction.
+
+        Returns False, and changes nothing, when there is no such document.
+        """
+        with self._lock, self._conn:
+            # Cascades to the document's chunks.
+            cursor = self._conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
+            if cursor.rowcount == 0:
+                return False
+            self._conn.executemany(_UPSERT_META, list(meta.items()))
+        return True
+
     def update_embeddings(
         self, embeddings: Mapping[str, np.ndarray], *, meta: Mapping[str, str]
     ) -> None:

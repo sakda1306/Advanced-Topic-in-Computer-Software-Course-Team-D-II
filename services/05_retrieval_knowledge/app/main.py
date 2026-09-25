@@ -10,15 +10,17 @@ import contextlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI
 
 from app.api.deps import Container, build_container
 from app.api.error_handlers import register_error_handlers
 from app.api.middleware.body_guard import BodyGuardMiddleware
 from app.api.middleware.request_context import RequestContextMiddleware
-from app.api.routes import health, search
+from app.api.routes import health, index, search
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, get_logger
+from app.search.aliases import keep_aliases_fresh
 
 log = get_logger(__name__)
 
@@ -45,11 +47,32 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         # Loaded in the background: /health answers at once, /ready turns 200 when done.
-        task = asyncio.create_task(_load_index(container))
+        tasks = [asyncio.create_task(_load_index(container))]
+        client: httpx.AsyncClient | None = None
+        if settings.football_data_url:
+            client = httpx.AsyncClient(
+                base_url=settings.football_data_url, timeout=settings.aliases_timeout_seconds
+            )
+            tasks.append(
+                asyncio.create_task(
+                    keep_aliases_fresh(
+                        container.aliases,
+                        client,
+                        every=settings.aliases_cache_seconds,
+                        retry_after=settings.aliases_retry_seconds,
+                    )
+                )
+            )
         yield
-        task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
+        for task in tasks:
+            task.cancel()
+        for task in tasks:
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        if client is not None:
+            await client.aclose()
+        # A load or write already in a worker thread still uses the store: let it finish.
+        await container.index.drain()
         container.store.close()
 
     app = FastAPI(
@@ -71,7 +94,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     )
     app.add_middleware(RequestContextMiddleware, type_base_url=settings.error_type_base_url)
 
-    for module in (health, search):
+    for module in (health, search, index):
         app.include_router(module.router)
     return app
 
