@@ -1,0 +1,165 @@
+"""Index writes: one writer at a time, all or nothing, snapshot swapped only on success."""
+
+from __future__ import annotations
+
+import sqlite3
+from collections.abc import Iterator
+from dataclasses import replace
+from datetime import datetime, timedelta
+from pathlib import Path
+
+import pytest
+
+import app.index.service as service_module
+from app.core.clock import BANGKOK
+from app.index.service import IndexService, UpsertResult
+from app.kb.store import META_MODEL, KnowledgeStore
+from tests.fakes import FakeEmbedder
+from tests.samples import MATCH, SAMPLE_CHUNK_COUNT, SAMPLE_DOCUMENTS
+
+
+class Clock:
+    def __init__(self) -> None:
+        self.now = datetime(2026, 9, 25, 10, 0, tzinfo=BANGKOK)
+
+    def __call__(self) -> datetime:
+        self.now += timedelta(seconds=1)
+        return self.now
+
+
+@pytest.fixture
+def store(tmp_path: Path) -> Iterator[KnowledgeStore]:
+    s = KnowledgeStore(str(tmp_path / "kb.sqlite"))
+    yield s
+    s.close()
+
+
+def service(store: KnowledgeStore, embedder: FakeEmbedder | None = None) -> IndexService:
+    return IndexService(store, embedder or FakeEmbedder(), clock=Clock())
+
+
+async def test_empty_store_loads_an_empty_snapshot(store: KnowledgeStore) -> None:
+    index = service(store)
+    await index.load()
+    assert index.snapshot is not None
+    assert index.snapshot.size == 0
+    assert index.snapshot.index_version is None
+
+
+async def test_upsert_builds_a_snapshot_and_a_version(store: KnowledgeStore) -> None:
+    index = service(store)
+    result = await index.upsert(SAMPLE_DOCUMENTS)
+    assert result == UpsertResult(6, SAMPLE_CHUNK_COUNT, "2026-09-25T10:00:01.000+07:00")
+    snapshot = index.snapshot
+    assert snapshot is not None
+    assert snapshot.size == snapshot.faiss_count == snapshot.bm25_count == SAMPLE_CHUNK_COUNT
+    assert snapshot.index_version == result.index_version
+
+
+async def test_unchanged_upsert_does_not_embed_or_bump_version(store: KnowledgeStore) -> None:
+    embedder = FakeEmbedder()
+    index = service(store, embedder)
+    first = await index.upsert(SAMPLE_DOCUMENTS)
+    before, calls = index.snapshot, len(embedder.calls)
+    again = await index.upsert(SAMPLE_DOCUMENTS)
+    assert again == first
+    assert len(embedder.calls) == calls
+    assert index.snapshot is before
+
+
+async def test_changed_document_replaces_its_chunks(store: KnowledgeStore) -> None:
+    index = service(store)
+    first = await index.upsert(SAMPLE_DOCUMENTS)
+    result = await index.upsert([replace(MATCH, text="Arsenal 2-1 Chelsea.")])
+    assert result.upserted == 1
+    assert result.chunks == 1
+    assert result.index_version != first.index_version
+    snapshot = index.snapshot
+    assert snapshot is not None
+    assert snapshot.size == SAMPLE_CHUNK_COUNT - 1
+    ids = [r.chunk.chunk_id for r in snapshot.records if r.chunk.doc_id == MATCH.doc_id]
+    assert ids == ["match-2026-mw05-57-61#c0"]
+
+
+async def test_last_copy_of_a_doc_id_wins(store: KnowledgeStore) -> None:
+    index = service(store)
+    result = await index.upsert([MATCH, replace(MATCH, text="Arsenal 2-1 Chelsea.")])
+    assert (result.upserted, result.chunks) == (1, 1)
+
+
+async def test_embedding_failure_changes_nothing(store: KnowledgeStore) -> None:
+    embedder = FakeEmbedder()
+    index = service(store, embedder)
+    first = await index.upsert(SAMPLE_DOCUMENTS)
+    before = index.snapshot
+    embedder.fail = True
+    with pytest.raises(RuntimeError):
+        await index.upsert([replace(MATCH, text="changed")])
+    assert index.snapshot is before
+    assert store.get_hashes([MATCH.doc_id]) == {MATCH.doc_id: MATCH.content_hash()}
+    assert store.get_meta("index_version") == first.index_version
+
+
+async def test_store_failure_keeps_the_old_snapshot(
+    store: KnowledgeStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    index = service(store)
+    await index.upsert(SAMPLE_DOCUMENTS)
+    before = index.snapshot
+
+    def broken(*_args: object, **_kwargs: object) -> None:
+        raise sqlite3.OperationalError("disk I/O error")
+
+    monkeypatch.setattr(store, "replace_documents", broken)
+    with pytest.raises(sqlite3.OperationalError):
+        await index.upsert([replace(MATCH, text="changed")])
+    assert index.snapshot is before
+
+
+async def test_snapshot_failure_leaves_the_store_unchanged(
+    store: KnowledgeStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    index = service(store)
+    await index.upsert(SAMPLE_DOCUMENTS)
+    before = index.snapshot
+    changed = replace(MATCH, text="changed")
+
+    def broken(*_args: object, **_kwargs: object) -> None:
+        raise MemoryError("faiss")
+
+    with monkeypatch.context() as m:
+        m.setattr(service_module, "Snapshot", broken)
+        with pytest.raises(MemoryError):
+            await index.upsert([changed])
+    assert index.snapshot is before
+    stored = {s.document.doc_id: s.document.text for s in store.load_all()}
+    assert stored[MATCH.doc_id] == MATCH.text
+
+    # The store did not take the change, so a retry is not skipped as unchanged.
+    await index.upsert([changed])
+    assert index.snapshot is not None
+    texts = {r.document.doc_id: r.document.text for r in index.snapshot.records}
+    assert texts[MATCH.doc_id] == "changed"
+
+
+async def test_restart_reuses_stored_embeddings(store: KnowledgeStore) -> None:
+    first = service(store)
+    result = await first.upsert(SAMPLE_DOCUMENTS)
+    embedder = FakeEmbedder()
+    restarted = service(store, embedder)
+    await restarted.load()
+    assert restarted.snapshot is not None
+    assert restarted.snapshot.size == SAMPLE_CHUNK_COUNT
+    assert restarted.snapshot.index_version == result.index_version
+    assert embedder.calls == []
+
+
+async def test_new_embedding_model_reembeds_everything_once(store: KnowledgeStore) -> None:
+    await service(store, FakeEmbedder("model-a")).upsert(SAMPLE_DOCUMENTS)
+    model_b = FakeEmbedder("model-b")
+    await service(store, model_b).load()
+    assert [len(batch) for batch in model_b.calls] == [SAMPLE_CHUNK_COUNT]
+    assert store.get_meta(META_MODEL) == "model-b"
+    again = FakeEmbedder("model-b")
+    await service(store, again).load()
+    assert again.calls == []
