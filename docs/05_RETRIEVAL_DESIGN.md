@@ -183,6 +183,11 @@ services/05_retrieval_knowledge/
 - คำถามนอกคลัง 10 ข้อ สำหรับปรับ `MIN_VECTOR_SCORE` ให้ได้ `chunks: []` เมื่อควร
 - ตัวชี้วัด: hit@1 · hit@5 · MRR · latency p50 / p95 · เทียบ bm25 / vector / hybrid / hybrid+rerank (bge-reranker-v2-m3 และ ms-marco-MiniLM-L-6-v2)
 - ผลออกเป็น JSON (member6 ใช้ทำ `eval/report.html`) + ตารางใน README
+- **ผล (PR ③)** อยู่ใน README ของ 05 · สรุปการตัดสินใจจากตัวเลข:
+  - `MIN_VECTOR_SCORE` = **0.0** ต่อไป: hybrid ไม่ได้ `chunks: []` กับคำถามนอกคลังที่ทุกค่า (BM25 เจอคำร่วมเสมอ) แต่ค่าที่สูงขึ้นตัด hit ที่ถูก → คำถามนอกคลังเป็นหน้าที่ของ router / generation
+  - reranker: ms-marco-MiniLM-L-6-v2 ยก hit@1 ทุกชุดเป็น ≥ 0.94 ที่ p95 ≤ 0.72 s · bge-reranker-v2-m3 p95 ~13 s เกิน timeout 10 s ใช้บน CPU ไม่ได้ · การเปิด `RERANK_MODEL` ตัดสินแยก
+  - ฝั่ง vector ที่อ่าน `query_original` ภาษาไทยทำ hybrid แพ้ bm25 ในชุด match (hit@1 0.70 vs 0.90) — เรื่องที่ต้องวัดต่อ
+  - `live_docs.json` เป็นข้อมูล**จำลอง** แทนด้วยเอกสารจริงจาก 07 เมื่อมี แล้วรันใหม่
 
 ---
 
