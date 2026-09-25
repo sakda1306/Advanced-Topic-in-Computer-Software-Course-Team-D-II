@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+import app.index.service as service_module
 from app.core.clock import BANGKOK
 from app.index.service import IndexService, UpsertResult
 from app.kb.store import META_MODEL, KnowledgeStore
@@ -113,6 +114,32 @@ async def test_store_failure_keeps_the_old_snapshot(
     with pytest.raises(sqlite3.OperationalError):
         await index.upsert([replace(MATCH, text="changed")])
     assert index.snapshot is before
+
+
+async def test_snapshot_failure_leaves_the_store_unchanged(
+    store: KnowledgeStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    index = service(store)
+    await index.upsert(SAMPLE_DOCUMENTS)
+    before = index.snapshot
+    changed = replace(MATCH, text="changed")
+
+    def broken(*_args: object, **_kwargs: object) -> None:
+        raise MemoryError("faiss")
+
+    with monkeypatch.context() as m:
+        m.setattr(service_module, "Snapshot", broken)
+        with pytest.raises(MemoryError):
+            await index.upsert([changed])
+    assert index.snapshot is before
+    stored = {s.document.doc_id: s.document.text for s in store.load_all()}
+    assert stored[MATCH.doc_id] == MATCH.text
+
+    # The store did not take the change, so a retry is not skipped as unchanged.
+    await index.upsert([changed])
+    assert index.snapshot is not None
+    texts = {r.document.doc_id: r.document.text for r in index.snapshot.records}
+    assert texts[MATCH.doc_id] == "changed"
 
 
 async def test_restart_reuses_stored_embeddings(store: KnowledgeStore) -> None:

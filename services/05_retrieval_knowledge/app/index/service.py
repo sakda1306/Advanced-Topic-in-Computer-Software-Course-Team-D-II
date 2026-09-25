@@ -1,8 +1,9 @@
 """Writes to the Knowledge Base (CONTRACT §6): one writer at a time, readers never wait.
 
-An upsert is all or nothing: chunks are embedded before anything is written, the store
-is written in one transaction, and only then is a new snapshot swapped in. If any step
-fails, the store and the snapshot that searches use are both unchanged.
+An upsert is all or nothing: chunks are embedded and the new snapshot is built before
+anything is written, the store is written in one transaction, and only then is the new
+snapshot swapped in. If any step fails, the store and the snapshot that searches use are
+both unchanged.
 """
 
 from __future__ import annotations
@@ -102,6 +103,11 @@ class IndexService:
         vectors = self._embedder.encode([c.text for c in flat])  # before anything is written
         embeddings = {c.chunk_id: v for c, v in zip(flat, vectors, strict=True)}
         version = version_stamp(self._clock())
+        by_id = {d.doc_id: d for d in changed}
+        records = [r for r in current.records if r.chunk.doc_id not in by_id]
+        records += [_indexed(c, by_id[c.doc_id], embeddings[c.chunk_id]) for c in flat]
+        # Built before the write: if it fails, the store never sees the change.
+        snapshot = Snapshot(records, dimension=self._embedder.dimension, index_version=version)
         self._store.replace_documents(
             changed,
             chunks,
@@ -110,10 +116,6 @@ class IndexService:
             meta={META_VERSION: version, META_MODEL: self._embedder.model_name},
         )
 
-        by_id = {d.doc_id: d for d in changed}
-        records = [r for r in current.records if r.chunk.doc_id not in by_id]
-        records += [_indexed(c, by_id[c.doc_id], embeddings[c.chunk_id]) for c in flat]
-        snapshot = Snapshot(records, dimension=self._embedder.dimension, index_version=version)
         total = sum(
             len(chunks[doc_id]) if doc_id in chunks else existing[doc_id] for doc_id in latest
         )
