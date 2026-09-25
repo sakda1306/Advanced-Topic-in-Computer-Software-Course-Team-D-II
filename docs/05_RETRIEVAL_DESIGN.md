@@ -23,7 +23,7 @@
 |---|---|---|
 | ที่เก็บ index | SQLite เป็นแหล่งจริง + snapshot (FAISS + BM25) ในหน่วยความจำ สลับทีเดียว | BM25 กับ FAISS สร้างจากชุด chunk เดียวกันเสมอ จึงตรงกันโดยโครงสร้าง (§6) · ล่มกลางทางไม่เหลือไฟล์ครึ่ง ๆ · restart ไม่ต้อง embed ใหม่ |
 | ชื่อเล่นทีม | ดึง `GET /football/teams` ของ 07 + cache 1 ชม. + ไฟล์สำรองใน 05 | แหล่งเดียวกับ router · ต้องแก้ CONTRACT §7 เพิ่ม retrieval เป็นผู้เรียก |
-| reranker | **เปิดเป็นค่าเริ่มต้น** `cross-encoder/ms-marco-MiniLM-L-6-v2` (ตั้ง `RERANK_MODEL` ว่าง = ปิด) | eval PR ③: hit@1 ทุกชุด ≥ 0.94 ที่ p95 ≤ 0.62 s บน CPU · bge-reranker-v2-m3 p95 ~13 s เกิน timeout 10 s |
+| reranker | **ปิดเป็นค่าเริ่มต้น** (`RERANK_MODEL` ว่าง) · แนะนำ `cross-encoder/ms-marco-MiniLM-L-6-v2` | eval PR ③: ms-marco hit@1 ต่ำสุด 0.939 ที่ p95 สูงสุด 613.7 ms ใน process บนโน้ตบุ๊ก · รีวิว #10: ตัวเลขมาจากเอกสารจำลองและเครื่องที่ไม่ใช่เครื่อง deploy จึงเปิดผ่าน env หลังวัดซ้ำ · bge-reranker-v2-m3 p95 ~14 s เกิน timeout 10 s |
 | multi_query | ไม่ทำ | router เขียนคำถามใหม่ 1 แบบอยู่แล้ว + 05 ค้นสองภาษา + ขยายชื่อเล่น · ไม่เพิ่มฟิลด์ใน §4 |
 
 ---
@@ -157,7 +157,7 @@ services/05_retrieval_knowledge/
 | `TRIVIA_FILE` | `data/football_trivia_qa.txt` | |
 | `EMBEDDING_MODEL` | `paraphrase-multilingual-MiniLM-L12-v2` | เปลี่ยน = embed ใหม่ทั้งหมดตอนเริ่ม |
 | `HF_HOME` | `/models` | cache โมเดล อยู่ใน volume |
-| `RERANK_MODEL` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | ว่าง = ปิด · โมเดลอังกฤษ ให้คะแนนด้วย `query` · ~90 MB cache ใน `HF_HOME` |
+| `RERANK_MODEL` | ว่าง | ว่าง = ปิด · แนะนำ `cross-encoder/ms-marco-MiniLM-L-6-v2` (อังกฤษ ให้คะแนนด้วย `query` · ~90 MB cache ใน `HF_HOME`) |
 | `MIN_VECTOR_SCORE` | `0.0` | 0 = ปิด · MiniLM ให้ cosine ไทย-อังกฤษต่ำ (ราว 0.26) ค่าจริงมาจาก eval |
 | `CANDIDATE_K` / `RRF_K` | `20` / `60` | |
 | `FOOTBALL_DATA_URL` | `http://football-data:8000` | ใช้ดึงชื่อเล่นทีม |
@@ -185,7 +185,8 @@ services/05_retrieval_knowledge/
 - ผลออกเป็น JSON (member6 ใช้ทำ `eval/report.html`) + ตารางใน README
 - **ผล (PR ③)** อยู่ใน README ของ 05 · สรุปการตัดสินใจจากตัวเลข:
   - `MIN_VECTOR_SCORE` = **0.0** ต่อไป: hybrid ไม่ได้ `chunks: []` กับคำถามนอกคลังที่ทุกค่า (BM25 เจอคำร่วมเสมอ) ค่าที่สูงขึ้นจึงไม่เปลี่ยนสิ่งที่ router ได้รับ → คำถามนอกคลังเป็นหน้าที่ของ router / generation
-  - reranker: ms-marco-MiniLM-L-6-v2 ยก hit@1 ทุกชุดเป็น ≥ 0.94 ที่ p95 ≤ 0.62 s · bge-reranker-v2-m3 p95 ~13 s เกิน timeout 10 s ใช้บน CPU ไม่ได้ · จึงเปิด ms-marco เป็นค่าเริ่มต้น
+  - reranker: ms-marco-MiniLM-L-6-v2 ได้ hit@1 ต่ำสุด 0.939 ที่ p95 สูงสุด 613.7 ms (ใน process โมเดลอุ่นแล้ว ไม่รวม HTTP) · bge-reranker-v2-m3 p95 ~14 s เกิน timeout 10 s ใช้บน CPU ไม่ได้ · **ปิดเป็นค่าเริ่มต้น** (รีวิว #10) เปิดผ่าน `RERANK_MODEL` หลังวัดกับเอกสาร 07 จริง คำ rewrite ของ router จริง และเครื่อง deploy
+  - คำถามที่ตอบไม่ได้: retrieval ไม่ว่างเองถ้า filter ยังเหลือเอกสาร · top `rerank_score` ของ ms-marco ≥ 4 แยกได้ (ปฏิเสธคำถามที่ตอบได้ 0.4% · ปล่อยคำถามที่ตอบไม่ได้ 0%) เสนอเป็นจุดตั้งต้นให้ router / generation — ชุดที่ตอบไม่ได้มีแค่ 20 ข้อ
   - ฝั่ง vector เปลี่ยนไป embed `query` แทน `query_original`: ชุด match hybrid hit@1 0.70 → 0.90 · MRR 0.82 → 0.95 · trivia เท่าเดิม · embed ทั้งสองแล้วรวม RRF ทำ trivia ตกเล็กน้อย จึงไม่ใช้ · ข้อควรรู้: คำอังกฤษใน golden เขียนมาดี ถ้า router แปลแย่ ผลจริงจะต่ำกว่านี้
   - `live_docs.json` เป็นข้อมูล**จำลอง** แทนด้วยเอกสารจริงจาก 07 เมื่อมี แล้วรันใหม่
 
