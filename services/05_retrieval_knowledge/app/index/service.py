@@ -138,9 +138,16 @@ class IndexService:
     async def rebuild(self, category: str | None = None) -> RebuildResult:
         """Re-chunk and re-embed the stored documents of one category, or of all of them."""
         # Step 1, no lock: the slow embedding; searches and writes go on meanwhile.
-        documents = await asyncio.to_thread(self._store.load_documents, category)
+        # Cancelling here is safe; the read that uses the store is still waited for.
+        documents = await self._to_the_end(asyncio.to_thread(self._store.load_documents, category))
         embedded = await asyncio.to_thread(self._embed_texts, documents, {})
-        # Step 2, locked: pick up what was written during step 1, then swap.
+        # Step 2, locked: pick up what was written during step 1, then swap. It writes
+        # SQLite, so once started it runs to the end like any other write.
+        return await self._to_the_end(self._rebuild(category, embedded))
+
+    async def _rebuild(
+        self, category: str | None, embedded: dict[str, np.ndarray]
+    ) -> RebuildResult:
         async with self._lock:
             current = self._snapshot or await asyncio.to_thread(self._load_sync)
             snapshot, result = await asyncio.to_thread(

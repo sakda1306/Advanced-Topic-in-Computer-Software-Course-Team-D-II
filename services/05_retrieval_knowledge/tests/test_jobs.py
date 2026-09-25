@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -93,3 +95,35 @@ async def test_close_cancels_a_running_rebuild(store: KnowledgeStore) -> None:
     await jobs.close()
     assert index.snapshot is before
     assert (job.status, job.detail) == ("failed", "cancelled")
+
+
+async def test_shutdown_while_a_rebuild_writes_sqlite_waits_for_it(
+    store: KnowledgeStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The app shuts down as main.py does: cancel the job, drain the index, close the store.
+    # The worker already writing SQLite must finish first, and the snapshot must follow it.
+    index = await ready_index(store, FakeEmbedder())
+    entered, release = threading.Event(), threading.Event()
+    write = store.replace_documents
+
+    def slow_write(*args: Any, **kwargs: Any) -> None:
+        entered.set()
+        release.wait(10)
+        write(*args, **kwargs)
+
+    monkeypatch.setattr(store, "replace_documents", slow_write)
+    jobs = RebuildJobs(index)
+    jobs.start(None)
+    await asyncio.to_thread(entered.wait, 10)
+    await jobs.close()
+    drained = asyncio.create_task(index.drain())
+    await asyncio.sleep(0.05)
+    assert not drained.done()  # the worker still holds the store: it must stay open
+    release.set()
+    await drained
+    store.close()  # nothing uses the connection any more
+    assert index.snapshot is not None
+    reopened = KnowledgeStore(str(tmp_path / "kb.sqlite"))
+    assert index.snapshot.index_version == reopened.get_meta("index_version")
+    assert len(reopened.load_all()) == index.snapshot.size == SAMPLE_CHUNK_COUNT
+    reopened.close()
