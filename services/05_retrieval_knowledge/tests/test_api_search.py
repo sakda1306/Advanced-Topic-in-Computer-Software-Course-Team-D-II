@@ -8,7 +8,9 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
+from app.core.config import Settings
 from tests.conftest import assert_problem
+from tests.fakes import FakeEmbedder
 
 CHUNK_KEYS = {"chunk_id", "text", "score", "bm25_score", "vector_score", "rerank_score", "source"}
 SOURCE_KEYS = {
@@ -141,3 +143,19 @@ async def test_unknown_top_level_key_is_422(client: httpx.AsyncClient) -> None:
     # "filter" instead of "filters" must not return unfiltered results.
     response = await search(client, query="Arsenal", filter={"category": ["standings"]})
     assert_problem(response, 422, "VALIDATION_ERROR")
+
+
+async def test_vector_side_embeds_the_english_query(
+    client: httpx.AsyncClient, embedder: FakeEmbedder
+) -> None:
+    # CONTRACT §4 v1.2: `query` (the router's English rewrite) goes to the vector side;
+    # `query_original` is only searched for team nicknames.
+    response = await search(
+        client, query="Arsenal latest result", query_original="เมื่อวานปืนใหญ่ชนะไหม", mode="vector"
+    )
+    assert response.status_code == 200
+    assert embedder.calls[-1] == ["Arsenal latest result"]
+
+
+def test_reranking_is_off_by_default() -> None:
+    assert Settings.model_fields["rerank_model"].default == ""

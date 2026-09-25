@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import shutil
+import sqlite3
 from collections.abc import Iterator
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -17,6 +20,9 @@ from scripts.eval_retrieval import (
     EVAL_DIR,
     Outcome,
     Query,
+    abstention,
+    answered_anyway,
+    copy_knowledge_base,
     evaluate,
     first_rank,
     load_live_documents,
@@ -29,6 +35,7 @@ from scripts.eval_retrieval import (
 from tests.conftest import TEST_DATA
 from tests.fakes import FakeEmbedder
 from tests.samples import SAMPLE_DOCUMENTS
+from tests.test_store import write
 
 TRIVIA_FILE = Path(__file__).parents[1] / "data" / "football_trivia_qa.txt"
 
@@ -78,7 +85,10 @@ def test_golden_files_fit_the_knowledge_base() -> None:
         by_set.setdefault(query.set, []).append(query)
     assert len({q.id for q in by_set["trivia"]}) == 60
     assert len(by_set["match"]) == 20
-    assert len(by_set["out_of_kb"]) == 10
+    assert len(by_set["out_of_kb"]) == 20
+    kinds = [q.variant for q in by_set["out_of_kb"]]
+    assert kinds.count("football") == 10
+    assert kinds.count("other") == 10
     for query in by_set["trivia"]:
         assert query.expected <= trivia_ids
     for query in by_set["match"]:
@@ -117,5 +127,69 @@ async def test_a_full_run_on_a_small_knowledge_base(store: KnowledgeStore) -> No
     sweep = sweep_min_vector_score(searcher, embedder, snapshot, queries, [0.0, 0.5, 1.01])
     assert [s["threshold"] for s in sweep] == [0.0, 0.5, 1.01]
     assert sweep[0]["in_kb_lost"] == 0.0
+    # Football questions routed with a matchweek nothing was ingested for: empty at any cut-off.
+    assert sweep[0]["out_of_kb_empty_hybrid"] > 0.0
     assert sweep[-1]["out_of_kb_empty_vector"] == 1.0
     assert 0.0 <= sweep[-1]["out_of_kb_empty_hybrid"] <= 1.0
+
+
+def test_copy_includes_writes_still_in_the_wal(tmp_path: Path) -> None:
+    # The service keeps its store open in WAL mode: recent writes are not in kb.sqlite yet.
+    source = tmp_path / "kb.sqlite"
+    store = KnowledgeStore(str(source))
+    write(store, SAMPLE_DOCUMENTS)
+    assert (tmp_path / "kb.sqlite-wal").stat().st_size > 0
+    plain = tmp_path / "plain.sqlite"
+    shutil.copyfile(source, plain)
+    copied = tmp_path / "copy.sqlite"
+    copy_knowledge_base(source, copied)
+    store.close()
+
+    def count(path: Path) -> int:
+        with closing(sqlite3.connect(path)) as conn:
+            try:
+                return int(conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0])
+            except sqlite3.DatabaseError:
+                return 0
+
+    assert count(plain) < len(SAMPLE_DOCUMENTS)  # why a file copy is not enough
+    assert count(copied) == len(SAMPLE_DOCUMENTS)
+
+
+def outcome(expected: bool, rank: int | None, top: float | None, kind: str = "football") -> Outcome:
+    q = Query(
+        "match" if expected else "out_of_kb",
+        "match" if expected else kind,
+        "q",
+        "q",
+        None,
+        {},
+        frozenset({"d"}) if expected else frozenset(),
+    )
+    return Outcome(q, "hybrid", rank, 1.0, 0 if top is None else 3, top)
+
+
+def test_abstention_by_top_rerank_score() -> None:
+    outcomes = [
+        outcome(True, 1, 5.0),
+        outcome(True, 2, -1.0),
+        outcome(False, None, 3.0),
+        outcome(False, None, None),  # filters left nothing: already refused
+        outcome(False, None, -9.0, kind="other"),
+    ]
+    [low, high] = abstention(outcomes, [-8.0, 0.0], "hybrid+rerank:x")
+    assert low == {
+        "mode": "hybrid+rerank:x",
+        "threshold": -8.0,
+        "answerable_refused": 0.0,
+        "answerable_kept_right": 0.5,
+        "unanswerable_answered_football": 0.5,
+        "unanswerable_answered_other": 0.0,
+    }
+    assert high["answerable_refused"] == 0.5
+    assert high["unanswerable_answered_football"] == 0.5
+
+
+def test_answered_anyway_counts_unanswerable_questions_with_chunks() -> None:
+    rows = answered_anyway([outcome(False, None, 3.0), outcome(False, None, None)])
+    assert rows == [{"kind": "football", "mode": "hybrid", "n": 2, "returned_chunks": 0.5}]

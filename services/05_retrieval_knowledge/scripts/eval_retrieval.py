@@ -4,17 +4,21 @@
     python -m scripts.eval_retrieval --rerank BAAI/bge-reranker-v2-m3
 
 Runs in process with the real embedding model on a copy of the knowledge base, so the
-service's own KB is never touched: KB_DB_PATH is copied if it exists, otherwise the trivia
-file is ingested into a temporary store. The frozen live-data fixture is added to the copy.
+service's own KB is never touched: KB_DB_PATH is copied with SQLite's backup API (writes
+still in the WAL are included) if it exists, otherwise the trivia file is ingested into a
+temporary store. The frozen live-data fixture is added to the copy.
 
 Golden sets (root `eval/`):
 - golden_trivia.jsonl    60 trivia questions x 4 phrasings (scripts/build_golden.py)
 - golden_match.jsonl     20 questions as the router sends them: English query, Thai
                          original with nicknames, filters; over fixtures/live_docs.json
-- golden_out_of_kb.jsonl 10 questions the knowledge base cannot answer
+- golden_out_of_kb.jsonl questions the knowledge base cannot answer: `kind` football
+                         (matches, tables, news not ingested) or other (not football)
 
 A hit is the expected document anywhere in the first k documents (chunks of one document
-count once). The results go to eval/results/retrieval.json for eval/report.html.
+count once). For unanswerable questions it reports how often chunks come back anyway, and
+whether a cut-off on the top rerank_score could separate answerable from unanswerable.
+The results, with the machine and library versions, go to eval/results/retrieval.json.
 """
 
 from __future__ import annotations
@@ -22,11 +26,15 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import shutil
+import os
+import platform
+import sqlite3
 import tempfile
 import time
 from collections.abc import Iterable, Sequence
+from contextlib import closing
 from dataclasses import dataclass
+from importlib import metadata
 from pathlib import Path
 from typing import Any
 
@@ -51,12 +59,15 @@ EVAL_DIR = SERVICE.parents[1] / "eval"
 MODES: tuple[Mode, ...] = ("bm25", "vector", "hybrid")
 DEPTH = 20  # documents looked at per question; MRR counts ranks up to here
 THRESHOLDS = (0.0, 0.1, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5, 0.6)
+# ms-marco returns logits; bge-reranker-v2-m3 returns probabilities (sigmoid).
+LOGIT_THRESHOLDS = (-8.0, -6.0, -4.0, -2.0, 0.0, 2.0, 4.0)
+PROBABILITY_THRESHOLDS = (0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9)
 
 
 @dataclass(frozen=True, slots=True)
 class Query:
     set: str  # trivia | match | out_of_kb
-    variant: str  # verbatim | slang | partial | natural for trivia, else the set name
+    variant: str  # trivia: verbatim | slang | partial | natural · out_of_kb: football | other
     id: str
     query: str
     query_original: str | None
@@ -70,6 +81,8 @@ class Outcome:
     mode: str
     rank: int | None  # 1-based rank of the first expected document; None = not found
     latency_ms: float
+    returned: int = 0  # documents returned
+    top_rerank: float | None = None  # rerank_score of the first hit, when reranking
 
 
 def _jsonl(path: Path) -> list[dict[str, Any]]:
@@ -98,11 +111,11 @@ def load_queries(eval_dir: Path) -> list[Query]:
     queries += [
         Query(
             "out_of_kb",
-            "out_of_kb",
+            item.get("kind", "other"),
             item["id"],
             item["query"],
             item.get("query_original"),
-            {},
+            item.get("filters", {}),
             frozenset(),
         )
         for item in _jsonl(eval_dir / "golden_out_of_kb.jsonl")
@@ -141,7 +154,7 @@ async def prepare_index(
 
 def _search(
     searcher: Searcher, snapshot: Snapshot, query: Query, mode: Mode
-) -> tuple[list[str], float]:
+) -> tuple[list[str], float, float | None]:
     started = time.perf_counter()
     hits = searcher.search(
         snapshot,
@@ -152,7 +165,8 @@ def _search(
         mode=mode,
     )
     latency = (time.perf_counter() - started) * 1000
-    return [snapshot.records[h.position].chunk.doc_id for h in hits], latency
+    top = hits[0].rerank_score if hits else None
+    return [snapshot.records[h.position].chunk.doc_id for h in hits], latency, top
 
 
 def evaluate(
@@ -160,17 +174,19 @@ def evaluate(
 ) -> list[Outcome]:
     outcomes: list[Outcome] = []
     for query in queries:
-        if not query.expected:
-            continue
         for mode in modes:
-            doc_ids, latency = _search(searcher, snapshot, query, mode)
-            outcomes.append(Outcome(query, mode, first_rank(doc_ids, query.expected), latency))
+            doc_ids, latency, top = _search(searcher, snapshot, query, mode)
+            rank = first_rank(doc_ids, query.expected)
+            returned = len(dict.fromkeys(doc_ids))
+            outcomes.append(Outcome(query, mode, rank, latency, returned, top))
     return outcomes
 
 
 def summarize(outcomes: Sequence[Outcome], label: str = "") -> list[dict[str, Any]]:
     groups: dict[tuple[str, str, str], list[Outcome]] = {}
     for outcome in outcomes:
+        if not outcome.query.expected:
+            continue  # unanswerable questions: see answered_anyway() and abstention()
         mode = f"{outcome.mode}{label}"
         groups.setdefault((outcome.query.set, outcome.query.variant, mode), []).append(outcome)
     rows = []
@@ -193,6 +209,64 @@ def summarize(outcomes: Sequence[Outcome], label: str = "") -> list[dict[str, An
     return rows
 
 
+def answered_anyway(outcomes: Sequence[Outcome], label: str = "") -> list[dict[str, Any]]:
+    """Unanswerable questions that still got chunks back (false positives of retrieval)."""
+    groups: dict[tuple[str, str], list[Outcome]] = {}
+    for outcome in outcomes:
+        if not outcome.query.expected:
+            key = (outcome.query.variant, f"{outcome.mode}{label}")
+            groups.setdefault(key, []).append(outcome)
+    return [
+        {
+            "kind": kind,
+            "mode": mode,
+            "n": len(group),
+            "returned_chunks": sum(o.returned > 0 for o in group) / len(group),
+        }
+        for (kind, mode), group in sorted(groups.items())
+    ]
+
+
+def _thresholds_for(outcomes: Sequence[Outcome]) -> tuple[float, ...]:
+    scores = [o.top_rerank for o in outcomes if o.top_rerank is not None]
+    probabilities = bool(scores) and all(0.0 <= s <= 1.0 for s in scores)
+    return PROBABILITY_THRESHOLDS if probabilities else LOGIT_THRESHOLDS
+
+
+def abstention(
+    outcomes: Sequence[Outcome], thresholds: Sequence[float], label: str
+) -> list[dict[str, Any]]:
+    """If callers refused to answer when the top rerank_score is below a cut-off.
+
+    - answerable_refused: answerable questions that would be refused
+    - answerable_kept_right: ... not refused and the expected document is first
+    - unanswerable_answered_<kind>: unanswerable questions that would still be answered
+    """
+    answerable = [o for o in outcomes if o.query.expected]
+    unanswerable: dict[str, list[Outcome]] = {}
+    for o in outcomes:
+        if not o.query.expected:
+            unanswerable.setdefault(o.query.variant, []).append(o)
+
+    def passes(o: Outcome, t: float) -> bool:
+        return o.top_rerank is not None and o.top_rerank >= t
+
+    rows = []
+    for t in thresholds:
+        row: dict[str, Any] = {
+            "mode": label,
+            "threshold": t,
+            "answerable_refused": sum(not passes(o, t) for o in answerable)
+            / max(len(answerable), 1),
+            "answerable_kept_right": sum(passes(o, t) and o.rank == 1 for o in answerable)
+            / max(len(answerable), 1),
+        }
+        for kind, group in sorted(unanswerable.items()):
+            row[f"unanswerable_answered_{kind}"] = sum(passes(o, t) for o in group) / len(group)
+        rows.append(row)
+    return rows
+
+
 def sweep_min_vector_score(
     searcher: Searcher,
     embedder: Embedder,
@@ -208,7 +282,7 @@ def sweep_min_vector_score(
     - out_of_kb_empty_hybrid: ... and no BM25 hit either, so hybrid returns `chunks: []`
     """
     in_kb: list[float | None] = []
-    out_vector: list[float] = []
+    out_vector: list[float | None] = []  # None: the filters left nothing to search
     out_bm25_empty: list[bool] = []
     for query in queries:
         filters = SearchFiltersIn(**query.filters).to_filters()
@@ -219,7 +293,7 @@ def sweep_min_vector_score(
             found = [s for p, s in scored if snapshot.records[p].chunk.doc_id in query.expected]
             in_kb.append(max(found) if found else None)
         else:
-            out_vector.append(max((s for _, s in scored), default=0.0))
+            out_vector.append(max((s for _, s in scored), default=None))
             bm25 = searcher.search(
                 snapshot,
                 query=query.query,
@@ -233,7 +307,7 @@ def sweep_min_vector_score(
     found_scores = [s for s in in_kb if s is not None]
     rows = []
     for t in thresholds:
-        vector_empty = [top < t for top in out_vector]
+        vector_empty = [top is None or top < t for top in out_vector]
         rows.append(
             {
                 "threshold": t,
@@ -298,11 +372,18 @@ async def _run(args: argparse.Namespace, store: KnowledgeStore) -> dict[str, Any
 
     base = searcher()
     evaluate(base, snapshot, queries[:3], modes=MODES)  # warm-up, not measured
-    rows = summarize(evaluate(base, snapshot, queries, modes=MODES))
+    outcomes = evaluate(base, snapshot, queries, modes=MODES)
+    rows = summarize(outcomes)
+    anyway = answered_anyway(outcomes)
+    refusals: list[dict[str, Any]] = []
     for model in args.rerank:
-        reranker = CrossEncoderReranker(model)  # fails loudly: no silent fallback here
-        outcomes = evaluate(searcher(reranker), snapshot, queries, modes=("hybrid",))
-        rows += summarize(outcomes, label=f"+rerank:{model.split('/')[-1]}")
+        label = f"+rerank:{model.split('/')[-1]}"
+        reranked = searcher(CrossEncoderReranker(model))  # fails loudly: no silent fallback
+        evaluate(reranked, snapshot, queries[:3], modes=("hybrid",))  # warm-up
+        outcomes = evaluate(reranked, snapshot, queries, modes=("hybrid",))
+        rows += summarize(outcomes, label=label)
+        anyway += answered_anyway(outcomes, label=label)
+        refusals += abstention(outcomes, _thresholds_for(outcomes), f"hybrid{label}")
     sweep = sweep_min_vector_score(base, embedder, snapshot, queries, args.thresholds)
     kb = {"chunks": snapshot.size, "documents": len({r.chunk.doc_id for r in snapshot.records})}
 
@@ -318,9 +399,39 @@ async def _run(args: argparse.Namespace, store: KnowledgeStore) -> dict[str, Any
         "knowledge_base": kb,
         "live_fixture_synthetic": True,
         "questions": counts,
+        "measured_on": provenance(),
         "results": sorted(rows, key=lambda r: (r["set"], r["variant"], r["mode"])),
+        "unanswerable_returned_chunks": anyway,
+        "rerank_abstention": refusals,
         "min_vector_score": sweep,
     }
+
+
+def provenance() -> dict[str, Any]:
+    """Where and how the numbers were measured, so they are not read out of context."""
+    versions = {}
+    for package in ("torch", "sentence-transformers", "faiss-cpu", "rank-bm25", "numpy"):
+        try:
+            versions[package] = metadata.version(package)
+        except metadata.PackageNotFoundError:
+            versions[package] = None
+    return {
+        "platform": platform.platform(),
+        "processor": platform.processor() or platform.machine(),
+        "cpu_count": os.cpu_count(),
+        "python": platform.python_version(),
+        "versions": versions,
+        "conditions": (
+            "one process, CPU only, models loaded and warmed up before timing; latency is "
+            "Searcher.search in process: no HTTP, no model loading, no other load on the machine"
+        ),
+    }
+
+
+def copy_knowledge_base(source: Path, dest: Path) -> None:
+    """A consistent copy with SQLite's backup API; a file copy misses writes in the WAL."""
+    with closing(sqlite3.connect(source)) as src, closing(sqlite3.connect(dest)) as dst:
+        src.backup(dst)
 
 
 def main() -> None:
@@ -337,7 +448,7 @@ def main() -> None:
         db = Path(tmp) / "kb.sqlite"
         source = Path(args.kb or get_settings().kb_db_path)
         if source.exists():
-            shutil.copyfile(source, db)
+            copy_knowledge_base(source, db)
         store = KnowledgeStore(str(db))
         try:
             report = asyncio.run(_run(args, store))

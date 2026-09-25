@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from app.core.config import Settings
+from app.core.config import RECOMMENDED_RERANK_MODEL
 from app.index.service import IndexService
 from app.kb.store import KnowledgeStore
 from app.kb.trivia import load_trivia_documents
@@ -65,7 +65,7 @@ async def test_a_trivia_question_finds_its_own_entry(
     store.close()
 
 
-async def test_the_default_reranker_keeps_the_right_entry_first(
+async def test_the_recommended_reranker_keeps_the_right_entry_first(
     tmp_path: Path, real_embedder: SentenceTransformerEmbedder
 ) -> None:
     documents, _ = load_trivia_documents(TRIVIA_FILE)
@@ -74,7 +74,7 @@ async def test_the_default_reranker_keeps_the_right_entry_first(
     await index.upsert(documents[:300])
     snapshot = index.snapshot
     assert snapshot is not None
-    reranker = load_reranker(Settings.model_fields["rerank_model"].default)
+    reranker = load_reranker(RECOMMENDED_RERANK_MODEL)
     assert reranker is not None
     searcher = Searcher(
         real_embedder,

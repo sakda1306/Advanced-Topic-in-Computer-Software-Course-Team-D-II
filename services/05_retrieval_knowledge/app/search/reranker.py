@@ -1,4 +1,4 @@
-"""Cross-encoder reranking (week4 src/rerankers.py). RERANK_MODEL empty switches it off."""
+"""Optional cross-encoder reranking (week4 src/rerankers.py). Off unless RERANK_MODEL is set."""
 
 from __future__ import annotations
 
