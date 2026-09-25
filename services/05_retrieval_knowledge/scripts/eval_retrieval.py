@@ -213,7 +213,7 @@ def sweep_min_vector_score(
     for query in queries:
         filters = SearchFiltersIn(**query.filters).to_filters()
         allowed = snapshot.allowed(filters)
-        vector = embedder.encode([query.query_original or query.query])[0]
+        vector = embedder.encode([query.query])[0]  # what Searcher embeds
         scored = snapshot.vector_top(vector, allowed, DEPTH, 0.0)
         if query.expected:
             found = [s for p, s in scored if snapshot.records[p].chunk.doc_id in query.expected]

@@ -22,8 +22,9 @@ class Settings(BaseSettings):
     aliases_file: str = "data/team_aliases.json"
 
     embedding_model: str = "paraphrase-multilingual-MiniLM-L12-v2"
+    # On by eval (PR ③): hit@1 >= 0.94 on every golden set at p95 <= 0.62 s on CPU.
     # Empty = no reranking; rerank_score stays null (CONTRACT §4).
-    rerank_model: str = ""
+    rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     # 0 = off. MiniLM gives Thai/English pairs low cosine, so a cut-off comes from eval.
     min_vector_score: float = 0.0
     candidate_k: int = 20

@@ -23,7 +23,7 @@
 |---|---|---|
 | ที่เก็บ index | SQLite เป็นแหล่งจริง + snapshot (FAISS + BM25) ในหน่วยความจำ สลับทีเดียว | BM25 กับ FAISS สร้างจากชุด chunk เดียวกันเสมอ จึงตรงกันโดยโครงสร้าง (§6) · ล่มกลางทางไม่เหลือไฟล์ครึ่ง ๆ · restart ไม่ต้อง embed ใหม่ |
 | ชื่อเล่นทีม | ดึง `GET /football/teams` ของ 07 + cache 1 ชม. + ไฟล์สำรองใน 05 | แหล่งเดียวกับ router · ต้องแก้ CONTRACT §7 เพิ่ม retrieval เป็นผู้เรียก |
-| reranker | มีแต่ปิดเป็นค่าเริ่มต้น (`RERANK_MODEL` ว่าง) · eval วัดก่อนเปิด | แผนจัดเป็น Could · cross-encoder บน CPU ช้า ต้องมีตัวเลขยืนยัน |
+| reranker | **เปิดเป็นค่าเริ่มต้น** `cross-encoder/ms-marco-MiniLM-L-6-v2` (ตั้ง `RERANK_MODEL` ว่าง = ปิด) | eval PR ③: hit@1 ทุกชุด ≥ 0.94 ที่ p95 ≤ 0.62 s บน CPU · bge-reranker-v2-m3 p95 ~13 s เกิน timeout 10 s |
 | multi_query | ไม่ทำ | router เขียนคำถามใหม่ 1 แบบอยู่แล้ว + 05 ค้นสองภาษา + ขยายชื่อเล่น · ไม่เพิ่มฟิลด์ใน §4 |
 
 ---
@@ -98,7 +98,7 @@ services/05_retrieval_knowledge/
 1. **ขยายคำค้นด้วยชื่อเล่น (week5 #1)** — หาชื่อเล่นใน `query` และ `query_original` แล้วต่อชื่อทางการท้ายคำค้นฝั่ง BM25 · จับชื่อยาวสุดก่อน · ชื่ออังกฤษต้องตรงทั้งคำ · ชื่อไทยต้องตรงกับลำดับคำที่ตัดด้วย pythainlp ทั้งคำ ("ผี" ต้องไม่จับ "ผีเสื้อ" · "แมนยู" ถูกตัดเป็น แมน|ยู ทั้งใน alias และในประโยค จึงยังจับได้) · ไม่เพิ่ม `team_ids` ใน filter เอง
 2. **กรอง metadata ก่อนค้น** — `category` อยู่ในรายการ · `season` / `matchweek` ตรง · `team_ids` มีตัวใดตัวหนึ่งตรง · `date_from` / `date_to` เทียบกับ `date` (เอกสารไม่มีวันที่ถูกตัดเมื่อมี filter วันที่) · ไม่เหลือ chunk → `200` + `chunks: []` · **05 ไม่ผ่อน filter เอง** (ลำดับถอยเป็นของ router §3)
 3. **BM25** (hybrid, bm25) — คำค้นที่ขยายแล้ว · คะแนนเฉพาะ chunk ที่ผ่าน filter · เก็บ `CANDIDATE_K` อันดับที่คะแนน > 0
-4. **vector** (hybrid, vector) — embed `query_original` · FAISS ผ่าน `IDSelectorBatch` เฉพาะ chunk ที่ผ่าน filter · เก็บ `CANDIDATE_K` อันดับ (ตัดที่ `vector_score < MIN_VECTOR_SCORE` เมื่อค่ามากกว่า 0)
+4. **vector** (hybrid, vector) — embed `query` (คำถามที่ router เขียนใหม่เป็นอังกฤษ) — เดิม embed `query_original` แต่ eval PR ③ พบว่าภาษาไทยทำชุด match hit@1 ตก (hybrid 0.70 → 0.90 เมื่อใช้ `query` · trivia เท่าเดิม) · FAISS ผ่าน `IDSelectorBatch` เฉพาะ chunk ที่ผ่าน filter · เก็บ `CANDIDATE_K` อันดับ (ตัดที่ `vector_score < MIN_VECTOR_SCORE` เมื่อค่ามากกว่า 0)
 5. **รวม** — hybrid: `score` = RRF (`RRF_K` = 60) · โหมดเดี่ยว: `score` = คะแนนดิบของวิธีนั้น · เรียงมาก → น้อย
 6. **rerank** (เมื่อตั้ง `RERANK_MODEL`) — ให้คะแนนผู้เข้ารอบ `CANDIDATE_K` อันดับด้วย `query` · ใส่ `rerank_score` แล้วเรียงตามนั้น · โหลดไม่ได้หรือล้ม → ใช้ผลข้อ 5 ต่อและเขียน log
 7. **ตอบ** — ตัดเหลือ `top_k` · แต่ละ chunk: `chunk_id`, `text`, `score`, `bm25_score`, `vector_score` (null ถ้าวิธีนั้นไม่เจอ), `rerank_score`, `source` (Source ตาม §0 · `ref` = ลำดับ 1..n) · พร้อม `request_id`, `latency_ms`, `index_version`
@@ -157,7 +157,7 @@ services/05_retrieval_knowledge/
 | `TRIVIA_FILE` | `data/football_trivia_qa.txt` | |
 | `EMBEDDING_MODEL` | `paraphrase-multilingual-MiniLM-L12-v2` | เปลี่ยน = embed ใหม่ทั้งหมดตอนเริ่ม |
 | `HF_HOME` | `/models` | cache โมเดล อยู่ใน volume |
-| `RERANK_MODEL` | ว่าง | ว่าง = ปิด |
+| `RERANK_MODEL` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | ว่าง = ปิด · โมเดลอังกฤษ ให้คะแนนด้วย `query` · ~90 MB cache ใน `HF_HOME` |
 | `MIN_VECTOR_SCORE` | `0.0` | 0 = ปิด · MiniLM ให้ cosine ไทย-อังกฤษต่ำ (ราว 0.26) ค่าจริงมาจาก eval |
 | `CANDIDATE_K` / `RRF_K` | `20` / `60` | |
 | `FOOTBALL_DATA_URL` | `http://football-data:8000` | ใช้ดึงชื่อเล่นทีม |
@@ -184,9 +184,9 @@ services/05_retrieval_knowledge/
 - ตัวชี้วัด: hit@1 · hit@5 · MRR · latency p50 / p95 · เทียบ bm25 / vector / hybrid / hybrid+rerank (bge-reranker-v2-m3 และ ms-marco-MiniLM-L-6-v2)
 - ผลออกเป็น JSON (member6 ใช้ทำ `eval/report.html`) + ตารางใน README
 - **ผล (PR ③)** อยู่ใน README ของ 05 · สรุปการตัดสินใจจากตัวเลข:
-  - `MIN_VECTOR_SCORE` = **0.0** ต่อไป: hybrid ไม่ได้ `chunks: []` กับคำถามนอกคลังที่ทุกค่า (BM25 เจอคำร่วมเสมอ) แต่ค่าที่สูงขึ้นตัด hit ที่ถูก → คำถามนอกคลังเป็นหน้าที่ของ router / generation
-  - reranker: ms-marco-MiniLM-L-6-v2 ยก hit@1 ทุกชุดเป็น ≥ 0.94 ที่ p95 ≤ 0.72 s · bge-reranker-v2-m3 p95 ~13 s เกิน timeout 10 s ใช้บน CPU ไม่ได้ · การเปิด `RERANK_MODEL` ตัดสินแยก
-  - ฝั่ง vector ที่อ่าน `query_original` ภาษาไทยทำ hybrid แพ้ bm25 ในชุด match (hit@1 0.70 vs 0.90) — เรื่องที่ต้องวัดต่อ
+  - `MIN_VECTOR_SCORE` = **0.0** ต่อไป: hybrid ไม่ได้ `chunks: []` กับคำถามนอกคลังที่ทุกค่า (BM25 เจอคำร่วมเสมอ) ค่าที่สูงขึ้นจึงไม่เปลี่ยนสิ่งที่ router ได้รับ → คำถามนอกคลังเป็นหน้าที่ของ router / generation
+  - reranker: ms-marco-MiniLM-L-6-v2 ยก hit@1 ทุกชุดเป็น ≥ 0.94 ที่ p95 ≤ 0.62 s · bge-reranker-v2-m3 p95 ~13 s เกิน timeout 10 s ใช้บน CPU ไม่ได้ · จึงเปิด ms-marco เป็นค่าเริ่มต้น
+  - ฝั่ง vector เปลี่ยนไป embed `query` แทน `query_original`: ชุด match hybrid hit@1 0.70 → 0.90 · MRR 0.82 → 0.95 · trivia เท่าเดิม · embed ทั้งสองแล้วรวม RRF ทำ trivia ตกเล็กน้อย จึงไม่ใช้ · ข้อควรรู้: คำอังกฤษใน golden เขียนมาดี ถ้า router แปลแย่ ผลจริงจะต่ำกว่านี้
   - `live_docs.json` เป็นข้อมูล**จำลอง** แทนด้วยเอกสารจริงจาก 07 เมื่อมี แล้วรันใหม่
 
 ---
@@ -202,7 +202,7 @@ services/05_retrieval_knowledge/
 
 ทุก PR เข้า `develop` ให้ member6 รีวิว (GIT_FLOW §2)
 
-**ส่งต่อ member6** (เจ้าของ Dockerfile / compose): worker เดียว · volume `/data` และ `HF_HOME` · healthcheck `GET /ready` พร้อม `start_period` พอสำหรับโหลดโมเดล · ดาวน์โหลดโมเดลตอน build image ได้ถ้าต้องการให้เริ่มเร็ว
+**ส่งต่อ member6** (เจ้าของ Dockerfile / compose): worker เดียว · volume `/data` และ `HF_HOME` · healthcheck `GET /ready` พร้อม `start_period` พอสำหรับโหลดโมเดล · ดาวน์โหลดโมเดลตอน build image ได้ถ้าต้องการให้เริ่มเร็ว · มีสองโมเดล: embedding (`EMBEDDING_MODEL`) และ reranker (`RERANK_MODEL`, ms-marco ~90 MB)
 
 **ความเสี่ยง**
 - image ใหญ่ (torch CPU + โมเดล) → ใช้ torch แบบ CPU-only และ cache โมเดลใน volume
