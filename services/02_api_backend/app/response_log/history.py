@@ -7,6 +7,7 @@ import time
 import uuid
 
 from sqlalchemy import select
+from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import iso, utcnow
@@ -111,7 +112,9 @@ async def save_feedback(
         message = await db.get(Message, body.message_id, populate_existing=True)
         if message is not None:
             break
-        if await store.get_json(pending_key(body.message_id)) != str(user_id):
+        pending = await store.get_json(pending_key(body.message_id))
+        # With the store down the pending mark is unknown, so wait instead of answering 404.
+        if pending != str(user_id) and store.available:
             raise AppError(ErrorCode.NOT_FOUND)
         if time.monotonic() >= deadline:
             raise AppError(ErrorCode.MESSAGE_NOT_READY)
@@ -121,19 +124,12 @@ async def save_feedback(
 
     if message.user_id != user_id or message.role != "assistant":
         raise AppError(ErrorCode.NOT_FOUND)
-    existing = await db.get(Feedback, message.id)
-    if existing is None:
-        db.add(
-            Feedback(
-                message_id=message.id,
-                user_id=user_id,
-                rating=body.rating,
-                comment=body.comment,
-                created_at=utcnow(),
-            )
-        )
-    else:
-        existing.rating = body.rating
-        existing.comment = body.comment
-        existing.created_at = utcnow()
+    # One statement, so two clicks arriving together cannot both try to insert.
+    dialect = postgresql if db.get_bind().dialect.name == "postgresql" else sqlite
+    values = {"rating": body.rating, "comment": body.comment, "created_at": utcnow()}
+    await db.execute(
+        dialect.insert(Feedback)
+        .values(message_id=message.id, user_id=user_id, **values)
+        .on_conflict_do_update(index_elements=[Feedback.message_id], set_=values)
+    )
     await db.commit()

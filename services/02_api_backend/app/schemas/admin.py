@@ -7,7 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.schemas.common import Source, TokenUsage, Trace
+from app.schemas.common import Source, Text, TokenUsage, Trace
 
 
 class UserRef(BaseModel):
@@ -110,8 +110,8 @@ class GenerateReportRequest(BaseModel):
 
 
 class ReportPatch(BaseModel):
-    title: str | None = Field(default=None, min_length=1, max_length=200)
-    markdown: str | None = Field(default=None, min_length=1, max_length=50_000)
+    title: Text | None = Field(default=None, min_length=1, max_length=200)
+    markdown: Text | None = Field(default=None, min_length=1, max_length=50_000)
 
 
 class UserPatch(BaseModel):

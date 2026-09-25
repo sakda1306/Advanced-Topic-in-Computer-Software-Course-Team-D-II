@@ -8,9 +8,13 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.db import models
+from app.schemas.common import Text
 
 Role = Literal["user", "admin"]
 Language = Literal["th", "en"]
+
+# favorite_team_id is an INTEGER column.
+MAX_INT32 = 2_147_483_647
 
 
 class UserOut(BaseModel):
@@ -38,12 +42,12 @@ class UserEnvelope(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    username: str = Field(min_length=1, max_length=64)
+    username: Text = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=128)
 
 
 class PreferencesRequest(BaseModel):
     """Both fields are optional; a field that is sent (even null) is applied."""
 
-    favorite_team_id: int | None = Field(default=None, ge=1)
+    favorite_team_id: int | None = Field(default=None, ge=1, le=MAX_INT32)
     language: Language | None = None

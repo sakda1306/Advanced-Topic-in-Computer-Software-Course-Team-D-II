@@ -11,7 +11,7 @@ from app.api.deps import DbDep
 from app.core.errors import AppError, ErrorCode, FieldError
 from app.response_log import admin_queries
 from app.schemas.admin import AdminMessage, FeedbackItem, LogItem, Stats
-from app.schemas.common import Page, Route
+from app.schemas.common import Page, Route, Text
 
 router = APIRouter()
 
@@ -51,7 +51,7 @@ async def message(message_id: UUID, db: DbDep) -> AdminMessage:
 @router.get("/logs")
 async def logs(
     db: DbDep,
-    request_id: Annotated[str | None, Query(max_length=64)] = None,
+    request_id: Annotated[Text | None, Query(max_length=64)] = None,
     route: Route | None = None,
     fallback: Annotated[
         Literal["any", "retrieval_empty", "retrieval_down", "llm_fallback_provider"] | None,

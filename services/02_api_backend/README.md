@@ -33,7 +33,7 @@ app/
   seed.py               admin + demo1–demo3
 migrations/             Alembic (สร้าง schema `app`)
 stubs/                  stub ของ 03 router และ 07 football-data (+ ส่วน index ของ 05) สำหรับ dev
-tests/                  pytest 101 เคส
+tests/                  pytest 117 เคส
 ```
 
 ## ตัวแปร env
