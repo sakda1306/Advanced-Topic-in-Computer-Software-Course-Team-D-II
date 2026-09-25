@@ -1,197 +1,250 @@
 "use client";
-
-import { FormEvent, PointerEvent, useEffect, useRef, useState } from "react";
-import type { ChatEntry } from "../app/page";
-import type { Team } from "../lib/teams";
-
-type Props = {
-  team: Team;
-  entries: ChatEntry[];
-  pending: boolean;
-  busy: boolean;
-  user: { display_name: string } | null;
-  authChecked: boolean;
-  openSignal: number;
-  onSend: (question: string) => Promise<boolean>;
-  onLogin: (username: string, password: string) => Promise<string | null>;
-};
-
-const CELL_W = 192;
-const CELL_H = 208;
-const SCALE = 0.75;
-const PET_W = CELL_W * SCALE;
-const PET_H = CELL_H * SCALE;
-
-function clampPosition(x: number, y: number) {
-  return {
-    x: Math.max(8, Math.min(x, window.innerWidth - PET_W - 8)),
-    y: Math.max(8, Math.min(y, window.innerHeight - PET_H - 8)),
-  };
-}
-
-export function MascotDock({ team, entries, pending, busy, user, authChecked, openSignal, onSend, onLogin }: Props) {
-  const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
-  const [open, setOpen] = useState(false);
-  const [frame, setFrame] = useState(0);
-  const [dragging, setDragging] = useState(false);
-  const [direction, setDirection] = useState<"left" | "right">("right");
-  const [question, setQuestion] = useState("");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [loginError, setLoginError] = useState("");
-  const [loggingIn, setLoggingIn] = useState(false);
-  const [reducedMotion, setReducedMotion] = useState(false);
-  const [waveUntil, setWaveUntil] = useState(0);
-  const drag = useRef<{ startX: number; startY: number; originalX: number; originalY: number; moved: boolean } | null>(null);
-  const messagesEnd = useRef<HTMLDivElement>(null);
-
+import { PointerEvent, useEffect, useRef, useState } from "react";
+import { X } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { useApp } from "./AppProvider";
+import { ChatPanel } from "./ChatPanel";
+import { clampPet, PET_FRAMES, PET_HEIGHT, PET_WIDTH } from "../lib/pet";
+export function MascotDock() {
+  const app = useApp(),
+    path = usePathname();
+  const [position, setPosition] = useState<{ x: number; y: number }>();
+  const [viewport, setViewport] = useState({ width: 1000, height: 800 });
+  const [open, setOpen] = useState(false),
+    [dragging, setDragging] = useState(false),
+    [left, setLeft] = useState(false),
+    [wave, setWave] = useState(false),
+    [reduced, setReduced] = useState(false),
+    [visible, setVisible] = useState(true),
+    [frame, setFrame] = useState(0);
+  const button = useRef<HTMLButtonElement>(null);
+  const drag = useRef<{
+    x: number;
+    y: number;
+    start: { x: number; y: number };
+    moved: boolean;
+  }>();
+  const suppressClick = useRef(false);
+  const row = dragging
+    ? left
+      ? 2
+      : 1
+    : app.pending
+      ? 7
+      : app.error
+        ? 5
+        : wave
+          ? 3
+          : 0;
   useEffect(() => {
-    const saved = localStorage.getItem("pitchside-mascot-position");
+    let saved: { x: number; y: number } | undefined;
     try {
-      const point = saved ? JSON.parse(saved) as { x: number; y: number } : null;
-      setPosition(clampPosition(point?.x ?? window.innerWidth - PET_W - 34, point?.y ?? window.innerHeight - PET_H - 38));
+      saved =
+        JSON.parse(
+          localStorage.getItem("pitchside-mascot-position") ?? "null",
+        ) ?? undefined;
     } catch {
-      setPosition(clampPosition(window.innerWidth - PET_W - 34, window.innerHeight - PET_H - 38));
+      /* Storage may be unavailable. */
     }
-    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const updateMotion = () => setReducedMotion(media.matches);
-    updateMotion();
-    media.addEventListener("change", updateMotion);
-    const onResize = () => setPosition((current) => current && clampPosition(current.x, current.y));
-    window.addEventListener("resize", onResize);
+    const resize = () => {
+      setViewport({ width: window.innerWidth, height: window.innerHeight });
+      setPosition((current) =>
+        clampPet(
+          current?.x ?? saved?.x ?? window.innerWidth - 175,
+          current?.y ?? saved?.y ?? window.innerHeight - 200,
+          window.innerWidth,
+          window.innerHeight,
+        ),
+      );
+    };
+    const motion = window.matchMedia("(prefers-reduced-motion: reduce)"),
+      update = () => setReduced(motion.matches),
+      visibility = () => setVisible(!document.hidden);
+    resize();
+    update();
+    visibility();
+    window.addEventListener("resize", resize);
+    motion.addEventListener("change", update);
+    document.addEventListener("visibilitychange", visibility);
     return () => {
-      media.removeEventListener("change", updateMotion);
-      window.removeEventListener("resize", onResize);
+      window.removeEventListener("resize", resize);
+      motion.removeEventListener("change", update);
+      document.removeEventListener("visibilitychange", visibility);
     };
   }, []);
-
   useEffect(() => {
-    if (openSignal > 0) {
-      setOpen(true);
-      setWaveUntil(Date.now() + 1000);
+    setFrame(0);
+    if (reduced || !visible) return;
+    const timer = setInterval(
+      () => setFrame((frame) => (frame + 1) % PET_FRAMES[row]),
+      row === 7 ? 130 : 170,
+    );
+    return () => clearInterval(timer);
+  }, [row, reduced, visible, app.team.key]);
+  useEffect(() => {
+    if (!wave) return;
+    const timer = setTimeout(() => setWave(false), 1100);
+    return () => clearTimeout(timer);
+  }, [wave]);
+  useEffect(() => {
+    if (app.openSignal && path !== "/") setOpen(true);
+  }, [app.openSignal, path]);
+  useEffect(() => {
+    setOpen(false);
+  }, [path]);
+  function save(point: { x: number; y: number }) {
+    try {
+      localStorage.setItem("pitchside-mascot-position", JSON.stringify(point));
+    } catch {
+      /* Movement still works without persistence. */
     }
-  }, [openSignal]);
-
-  useEffect(() => {
-    if (reducedMotion || !team.mascot) return;
-    const timer = window.setInterval(() => setFrame((current) => (current + 1) % 8), pending ? 115 : 170);
-    return () => window.clearInterval(timer);
-  }, [pending, reducedMotion, team.mascot]);
-
-  useEffect(() => {
-    messagesEnd.current?.scrollIntoView({ behavior: reducedMotion ? "instant" : "smooth", block: "end" });
-  }, [entries, pending, open, reducedMotion]);
-
+  }
   function pointerDown(event: PointerEvent<HTMLButtonElement>) {
-    if (!position) return;
-    drag.current = { startX: event.clientX, startY: event.clientY, originalX: position.x, originalY: position.y, moved: false };
+    if (!position || event.button !== 0) return;
+    suppressClick.current = false;
+    drag.current = {
+      x: event.clientX,
+      y: event.clientY,
+      start: position,
+      moved: false,
+    };
     event.currentTarget.setPointerCapture(event.pointerId);
   }
-
   function pointerMove(event: PointerEvent<HTMLButtonElement>) {
-    if (!drag.current) return;
-    const dx = event.clientX - drag.current.startX;
-    const dy = event.clientY - drag.current.startY;
-    if (Math.abs(dx) + Math.abs(dy) > 5) drag.current.moved = true;
-    if (!drag.current.moved) return;
+    const current = drag.current;
+    if (!current) return;
+    const dx = event.clientX - current.x,
+      dy = event.clientY - current.y;
+    if (Math.abs(dx) + Math.abs(dy) > 5) current.moved = true;
+    if (!current.moved) return;
     setDragging(true);
-    setDirection(dx < 0 ? "left" : "right");
-    setPosition(clampPosition(drag.current.originalX + dx, drag.current.originalY + dy));
+    setLeft(dx < 0);
+    setPosition(
+      clampPet(
+        current.start.x + dx,
+        current.start.y + dy,
+        viewport.width,
+        viewport.height,
+      ),
+    );
   }
-
   function pointerUp(event: PointerEvent<HTMLButtonElement>) {
-    if (!drag.current) return;
-    const moved = drag.current.moved;
-    drag.current = null;
+    suppressClick.current = !!drag.current?.moved;
+    drag.current = undefined;
     setDragging(false);
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-    if (moved) {
-      setPosition((current) => {
-        if (current) localStorage.setItem("pitchside-mascot-position", JSON.stringify(current));
-        return current;
-      });
-    } else {
-      setOpen((value) => !value);
-      setWaveUntil(Date.now() + 1000);
-    }
+    if (position) save(position);
+    if (event.currentTarget.hasPointerCapture(event.pointerId))
+      event.currentTarget.releasePointerCapture(event.pointerId);
   }
-
-  function keyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
-    const steps: Record<string, [number, number]> = { ArrowLeft: [-20, 0], ArrowRight: [20, 0], ArrowUp: [0, -20], ArrowDown: [0, 20] };
-    const step = steps[event.key];
-    if (!step || !position) return;
-    event.preventDefault();
-    const next = clampPosition(position.x + step[0], position.y + step[1]);
-    setPosition(next);
-    localStorage.setItem("pitchside-mascot-position", JSON.stringify(next));
-  }
-
-  async function submitQuestion(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!question.trim() || busy) return;
-    const sent = await onSend(question);
-    if (sent) setQuestion("");
-  }
-
-  async function submitLogin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setLoggingIn(true);
-    const error = await onLogin(username, password);
-    setLoginError(error ?? "");
-    if (!error) setPassword("");
-    setLoggingIn(false);
-  }
-
-  const row = dragging ? (direction === "right" ? 1 : 2) : pending ? 7 : waveUntil > Date.now() ? 3 : 0;
-  const panelWidth = Math.min(380, Math.max(280, typeof window === "undefined" ? 380 : window.innerWidth - 24));
-  const left = position ? Math.max(12, Math.min(position.x + PET_W / 2 - panelWidth / 2, window.innerWidth - panelWidth - 12)) : 12;
-  const viewportHeight = typeof window === "undefined" ? 800 : window.innerHeight;
-  const panelHeight = Math.min(505, viewportHeight - 24);
-  const panelTop = position ? Math.max(12, Math.min(position.y >= panelHeight + 20 ? position.y - panelHeight - 10 : position.y + PET_H + 10, viewportHeight - panelHeight - 12)) : 12;
-
+  if (!position) return null;
+  const width = Math.min(420, viewport.width - 24),
+    height = Math.min(540, viewport.height - 24);
+  const panelLeft = Math.max(
+    12,
+    Math.min(
+      position.x + PET_WIDTH / 2 - width / 2,
+      viewport.width - width - 12,
+    ),
+  );
+  const top = Math.max(
+    12,
+    Math.min(
+      position.y >= height + 20
+        ? position.y - height - 10
+        : position.y + PET_HEIGHT + 10,
+      viewport.height - height - 12,
+    ),
+  );
   return (
     <div className="mascot-layer">
-      {open && position && (
-        <section className="mascot-chat" aria-label="แชทกับมาสคอส" style={{ left, width: panelWidth, top: panelTop, height: panelHeight }}>
-          <div className="chat-heading">
-            <div><span className="chat-online" /><strong>{team.shortName} Companion</strong><small>{team.mascot ? "เพื่อนคุยฟุตบอลประจำทีม" : "แชทฟุตบอล · มาสคอสกำลังมา"}</small></div>
-            <button type="button" aria-label="ปิดแชท" onClick={() => setOpen(false)}>×</button>
-          </div>
-          {!authChecked ? <p className="chat-state">กำลังตรวจสอบบัญชี…</p> : !user ? (
-            <form className="chat-login" onSubmit={(event) => void submitLogin(event)}>
-              <p>เข้าสู่ระบบเพื่อคุยกับมาสคอส</p>
-              <label>ชื่อผู้ใช้<input required autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} /></label>
-              <label>รหัสผ่าน<input required type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
-              {loginError && <span className="form-error" role="alert">{loginError}</span>}
-              <button type="submit" disabled={loggingIn}>{loggingIn ? "กำลังเข้าสู่ระบบ…" : "เข้าสู่ระบบ"}</button>
-            </form>
-          ) : (
-            <>
-              <div className="chat-messages" role="log" aria-live="polite" aria-relevant="additions text">
-                {entries.length === 0 && <div className="chat-welcome"><span>✦</span><strong>สวัสดี {user.display_name}</strong><p>ถามเรื่องพรีเมียร์ลีก ผลการแข่งขัน หรือตารางคะแนนได้เลย</p></div>}
-                {entries.map((entry) => (
-                  <div key={entry.id} className={"chat-message " + entry.role}>
-                    <p>{entry.content}</p>
-                    {entry.sources && entry.sources.length > 0 && <div className="chat-sources">แหล่งข้อมูล: {entry.sources.map((source, index) => <span key={source.ref}>{index > 0 ? " · " : ""}{source.url?.startsWith("https://") ? <a href={source.url} target="_blank" rel="noopener noreferrer">{source.title}</a> : source.title}</span>)}</div>}
-                    {entry.dataAsOf && <small>ข้อมูล ณ {entry.dataAsOf}</small>}
-                  </div>
-                ))}
-                {pending && <div className="chat-message assistant thinking">กำลังหาคำตอบ<span className="thinking-dots">…</span></div>}
-                <div ref={messagesEnd} />
-              </div>
-              <form className="chat-compose" onSubmit={(event) => void submitQuestion(event)}>
-                <label className="sr-only" htmlFor="mascot-question">ถามมาสคอส</label>
-                <textarea id="mascot-question" rows={2} maxLength={2000} placeholder="ถามเรื่องฟุตบอลได้เลย…" value={question} onChange={(event) => setQuestion(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} />
-                <button type="submit" disabled={!question.trim() || busy} aria-label="ส่งคำถาม">➜</button>
-              </form>
-            </>
-          )}
+      {open && (
+        <section
+          role="dialog"
+          aria-label="แชทกับมาสคอส"
+          className="mascot-chat"
+          style={{ left: panelLeft, top, width, height }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              setOpen(false);
+              button.current?.focus();
+            }
+          }}
+        >
+          <header className="panel-heading">
+            <div>
+              <strong>{app.team.shortName} Companion</strong>
+              <small>เพื่อนคุยฟุตบอลประจำทีม</small>
+            </div>
+            <button
+              aria-label="ปิดแชทมาสคอส"
+              onClick={() => {
+                setOpen(false);
+                button.current?.focus();
+              }}
+            >
+              <X size={20} />
+            </button>
+          </header>
+          <ChatPanel surface="dock" />
         </section>
       )}
-      {position && <button type="button" className={"mascot-pet" + (dragging ? " dragging" : "")} style={{ left: position.x, top: position.y }} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={() => { drag.current = null; setDragging(false); }} onKeyDown={keyDown} aria-label={team.mascot ? "มาสคอส " + team.name + " กดเพื่อเปิดแชท หรือลากเพื่อย้ายตำแหน่ง" : "เปิดแชทฟุตบอล มาสคอส Liverpool กำลังมา"} aria-expanded={open}>
-        {team.mascot ? <span className="mascot-sprite" style={{ backgroundImage: "url(" + team.mascot + ")", backgroundPosition: (-frame * CELL_W * SCALE) + "px " + (-row * CELL_H * SCALE) + "px" }} aria-hidden="true" /> : <span className="mascot-placeholder" aria-hidden="true"><span>✦</span><small>SOON</small></span>}
-        <span className="mascot-hint">{team.mascot ? "ถามฉันได้เลย" : "แชทได้เลย"}</span>
-      </button>}
+      <button
+        ref={button}
+        className={"mascot-pet" + (dragging ? " dragging" : "")}
+        style={{ left: position.x, top: position.y }}
+        aria-label={"มาสคอส " + app.team.name + " เปิดแชทหรือลากเพื่อย้าย"}
+        aria-expanded={open}
+        onPointerDown={pointerDown}
+        onPointerMove={pointerMove}
+        onPointerUp={pointerUp}
+        onPointerCancel={() => {
+          drag.current = undefined;
+          suppressClick.current = true;
+          setDragging(false);
+        }}
+        onClick={() => {
+          if (suppressClick.current) {
+            suppressClick.current = false;
+            return;
+          }
+          setOpen((value) => !value);
+          setWave(true);
+        }}
+        onKeyDown={(event) => {
+          const moves: Record<string, number[]> = {
+            ArrowLeft: [-20, 0],
+            ArrowRight: [20, 0],
+            ArrowUp: [0, -20],
+            ArrowDown: [0, 20],
+          };
+          const move = moves[event.key];
+          if (move) {
+            event.preventDefault();
+            const next = clampPet(
+              position.x + move[0],
+              position.y + move[1],
+              viewport.width,
+              viewport.height,
+            );
+            setPosition(next);
+            save(next);
+          }
+        }}
+      >
+        <span
+          className="mascot-sprite"
+          aria-hidden="true"
+          style={{
+            backgroundImage: "url(" + app.team.mascot + ")",
+            backgroundPosition:
+              -(reduced ? 0 : frame % PET_FRAMES[row]) * PET_WIDTH +
+              "px " +
+              -row * PET_HEIGHT +
+              "px",
+          }}
+        />
+        <span className="mascot-hint">คุยกับ {app.team.shortName}</span>
+      </button>
     </div>
   );
 }

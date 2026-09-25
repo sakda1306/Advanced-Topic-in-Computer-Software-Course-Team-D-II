@@ -1,13 +1,104 @@
-# PitchSide Web App
+# PitchSide — 01 Web App
 
-หน้าเว็บพรีเมียร์ลีกพร้อมธีม 5 ทีมและมาสคอสแบบลากได้สำหรับ Manchester United, Manchester City, Chelsea และ Arsenal มาสคอสเปิดแชทที่เชื่อมกับ `/api/chat` ของ backend ทีม Liverpool ยังไม่มีไฟล์ sprite จึงแสดงปุ่มแชทชั่วคราว
+Next.js 14 + TypeScript สำหรับผู้ช่วยฟุตบอลพรีเมียร์ลีก ธีมและมาสคอส 5 ทีม อ่านข้อมูลผ่าน API Backend ของทีม 02 เท่านั้น
 
-## เริ่มใช้งาน
+## รันด้วย Docker
 
-1. เปิด backend ที่ `http://localhost:8000` หรือกำหนด `API_INTERNAL_URL` ใน `.env.local`
-2. ที่โฟลเดอร์นี้ รัน `pnpm install` และ `pnpm dev`
-3. เปิด `http://localhost:3000` และเข้าสู่ระบบด้วยบัญชีของ backend
+จากโฟลเดอร์ `services/01_web_app`:
 
-มาสคอสใช้ sprite atlas WebP ขนาด 1536 × 2288 พิกเซล (8 คอลัมน์ × 11 แถว) จาก `D:\RMUTT\Advanced Ai\mascot` ซึ่งคัดลอกไว้ใน `public/mascots` แล้ว เปลี่ยนทีมจากแถบด้านบนเพื่อเปลี่ยนสีและมาสคอส ลากด้วยเมาส์หรือสัมผัสเพื่อย้ายตำแหน่ง ใช้ปุ่มลูกศรเมื่อโฟกัสมาสคอสเพื่อย้ายด้วยคีย์บอร์ด ตำแหน่งบันทึกใน browser localStorage
+```powershell
+docker compose build
+docker compose up -d --wait
+```
 
-เมื่อ Liverpool มี sprite atlas ให้คัดลอกไฟล์ไปที่ `public/mascots/liverpool.webp` แล้วกำหนด `mascot` ของ Liverpool ใน `lib/teams.ts` เป็น `/mascots/liverpool.webp`
+เปิด <http://localhost:3000> บัญชีสำหรับชุดสาธิต:
+
+| บัญชี               | รหัสผ่านเริ่มต้น | สิทธิ์      |
+| ------------------- | ---------------- | ----------- |
+| demo1, demo2, demo3 | demo1234         | ผู้ใช้      |
+| admin               | admin1234        | ผู้ดูแลระบบ |
+
+Compose ชุดนี้ใช้ **Backend จริงของทีม 02 + PostgreSQL + Redis** แต่ Router และ Football Data เป็น **stub ของทีม 02** จึงมีป้ายโหมดสาธิตบนเว็บ คำตอบ/ผลฟุตบอลยังไม่ใช่ข้อมูลจริงจากบริการ 03–07
+
+ไฟล์ Compose และ Dockerfile ทั้งหมดอยู่ในงาน 01 ตัว image สำหรับ integration อ่านและคัดลอก source ของ `../02_api_backend` โดยไม่แก้ไฟล์ต้นฉบับ ไม่ bind mount โฟลเดอร์เพื่อน การ migrate/seed ทำใน container และข้อมูลเก็บใน Docker volume `pitchside01_pgdata`
+
+```powershell
+docker compose ps
+docker compose logs --tail=80 web api
+docker compose down
+```
+
+`down` เก็บฐานข้อมูลไว้ การเปิดรอบต่อไป seed ไม่เปลี่ยนรหัสผ่านบัญชีที่มีแล้ว ตั้ง `WEB_PORT` ใน `.env` หาก port 3000 ถูกใช้ ค่า env สำหรับ demo อยู่ใน `.env.example` (คัดลอกเป็น `.env` ก่อนปรับได้)
+
+## ใช้กับ API จริงของทีม
+
+Dockerfile หลักเป็น production standalone image รันด้วยผู้ใช้ที่ไม่ใช่ root และมี `/health`:
+
+```powershell
+docker build -t pitchside-web --build-arg NEXT_PUBLIC_DEMO_MODE=false .
+docker run --rm -p 3000:3000 -e API_INTERNAL_URL=http://host.docker.internal:8000 pitchside-web
+```
+
+เมื่อทีม Deploy นำ web ไปรวมใน Compose ของทีม ให้ตั้ง `API_INTERNAL_URL=http://api:8000` บน network เดียวกับ api ส่วน Router/Retrieval/Generation/Football Data ให้ตั้งที่ backend ตาม contract การเปิดผ่าน HTTPS ต้องตั้ง `COOKIE_SECURE=true` ฝั่ง backend และใช้บัญชี/secret ของ deployment จริง
+
+## พัฒนาโดยไม่ใช้ Docker
+
+Node.js 22+ และ pnpm 11.25.0:
+
+```powershell
+pnpm install --frozen-lockfile
+Copy-Item .env.example .env.local
+pnpm dev
+```
+
+ตั้ง `API_INTERNAL_URL` ใน `.env.local` ให้ตรงกับ API Backend (ค่าเริ่มต้น `http://localhost:8000`) หากใช้ `pnpm build` แล้วต้องการเปิดผล build แบบ standalone ให้ใช้ Docker หรือ `pnpm start` สำหรับการรัน Next ในโฟลเดอร์พัฒนา
+
+## หน้าจอและพฤติกรรม
+
+| หน้า                             | ความสามารถ                                                                                                                                  |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/login`                         | Username/password, แสดง/ซ่อนรหัสผ่าน, error จาก API                                                                                         |
+| `/`                              | Chat, session/history, คำถามตัวอย่าง 5 กลุ่ม, Markdown ที่ไม่รัน HTML, citation ไป source, feedback, route ภาษาไทย, latency, เวลาไทย, trace |
+| `/football/fixtures`             | ผลและโปรแกรมแข่ง กรองฤดูกาล/แมตช์วีค/ทีม/สถานะ                                                                                              |
+| `/football/standings`            | ตารางคะแนนและเวลาข้อมูล                                                                                                                     |
+| `/football/reports`              | รายงานที่เผยแพร่ พร้อม empty state                                                                                                          |
+| `/matches/:id`                   | ผลแข่ง เหตุการณ์ ผู้เล่น สถิติ; รองรับข้อมูลว่าง                                                                                            |
+| `/admin`                         | สถิติรวม, route, ชั้นตัดสินใจ, feedback, latency, fallback                                                                                  |
+| `/admin/pipeline`                | สั่ง ingest/สร้างรายงาน ติดตาม queued/running/done/failed                                                                                   |
+| `/admin/feedback`, `/admin/logs` | ตัวกรอง, cursor pagination, รายละเอียดคำถาม/คำตอบ/source/trace                                                                              |
+| `/admin/reports`, `/admin/audit` | แก้ร่าง เผยแพร่ ถอนการเผยแพร่ และ audit                                                                                                     |
+| `/admin/users`, `/admin/kb`      | ค้นผู้ใช้/เปลี่ยนบทบาท/ระงับ, สถิติคลัง/ลบเอกสารทีละรายการ/ส่งคำขอ reindex                                                                  |
+
+API เป็นผู้บังคับสิทธิ์จริงทุกครั้ง เว็บซ่อนเมนู Admin จาก user ปกติและแสดง 403 สำหรับหน้าที่ไม่มีสิทธิ์ ไม่มี token เก็บใน localStorage
+
+Logout/401/เปลี่ยนบัญชีล้างข้อความ session และ draft ทั้งหมด คำตอบที่ค้างจากบัญชีก่อนจะไม่เข้าบัญชีใหม่ เปลี่ยนทีมจะบันทึก preference ก่อน แล้วเริ่มบทสนทนาใหม่ เพื่อให้บริบททีมตรงกับหน้าจอ ประวัติที่โหลดไม่มี metadata ทีมจาก API จึงไม่เดาว่า session เก่าเป็นทีมใด
+
+มาสคอสมีครบ 5 ทีม ลากได้ ใช้ Enter/Space เปิดแชทและลูกศรเลื่อนได้ บันทึกเฉพาะตำแหน่งใน localStorage รองรับ reduced motion และหยุด animation เมื่อแท็บซ่อน จำนวนเฟรมจริงแต่ละท่ากำหนดใน `lib/pet.ts`
+
+Admin ใช้เฉพาะสถิติที่ API มี ไม่มีกราฟรายวันหรือตัวเลขเปลี่ยนแปลงที่แต่งขึ้น Reindex แสดงเพียงรับคำขอพร้อม job ID เพราะ contract ของ Web ยังไม่มี endpoint ติดตาม job ของ Retrieval ส่วน job ใน Pipeline ติดตามผ่าน `/api/admin/jobs/:id`
+
+## ทดสอบ
+
+```powershell
+pnpm test
+pnpm typecheck
+pnpm format:check
+pnpm build
+# หลัง Docker พร้อม
+pnpm test:smoke
+```
+
+Unit/component tests ใช้ Vitest + React Testing Library + jsdom ทดสอบ interaction/state รวมถึงบัญชี, citation, admin permissions, job polling และ confirmation
+
+`test:smoke` ยิง HTTP ผ่านเว็บ Docker ไป Backend จริง ตรวจ login/cookie, แยกบัญชี, chat/history/feedback, football, Admin, publish/unpublish, 401/403/404/409/422/502/504 มีคำถาม timeout ที่ตั้งใจรอประมาณ 45 วินาที ชุดนี้จะเพิ่มประวัติ/feedback/audit ในฐานข้อมูลสาธิต และปรับสถานะรายงานใน stub จึงควรรันกับชุดสาธิตนี้เท่านั้น
+
+ทดสอบ proxy เมื่อ API ล่ม (เปิดกลับหลังทดสอบ):
+
+```powershell
+docker compose stop api
+try { node scripts/smoke.mjs --outage } finally { docker compose start api }
+```
+
+ตรวจ atlas ด้วย Python ที่มี Pillow: `python scripts/validate-mascots.py`
+
+ดูผลที่รันจริงและขอบเขตการตรวจใน `TEST_RESULTS.md`
