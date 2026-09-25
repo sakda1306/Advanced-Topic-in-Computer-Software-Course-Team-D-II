@@ -1,7 +1,8 @@
-"""POST /index/upsert, DELETE /index/{doc_id}, GET /index/stats (CONTRACT §6)."""
+"""Index management endpoints (CONTRACT §6): upsert, delete, stats, rebuild and its jobs."""
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import httpx
@@ -165,3 +166,78 @@ async def test_stats_before_the_index_loads_are_503(unloaded_app: FastAPI) -> No
     transport = httpx.ASGITransport(app=unloaded_app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as c:
         assert_problem(await c.get("/index/stats"), 503, "INDEX_NOT_READY")
+
+
+async def finished_job(client: httpx.AsyncClient, container: Container, job_id: str) -> Any:
+    await container.jobs.wait()
+    response = await client.get(f"/index/jobs/{job_id}")
+    assert response.status_code == 200
+    return response.json()
+
+
+async def test_rebuild_is_accepted_and_the_job_can_be_followed(
+    client: httpx.AsyncClient, container: Container
+) -> None:
+    before = (await client.get("/index/stats")).json()
+    response = await client.post("/index/rebuild", json={"request_id": "req-2"})
+    assert response.status_code == 202
+    job_id = response.json()["job_id"]
+    assert set(response.json()) == {"job_id"}
+
+    job = await finished_job(client, container, job_id)
+    assert set(job) == {"job_id", "status", "started_at", "finished_at", "detail"}
+    assert (job["job_id"], job["status"]) == (job_id, "done")
+    after = (await client.get("/index/stats")).json()
+    assert after["index_version"] != before["index_version"]
+    assert {k: after[k] for k in ("documents", "chunks", "by_category")} == {
+        k: before[k] for k in ("documents", "chunks", "by_category")
+    }
+    assert "match-2026-mw05-57-61" in await doc_ids_found(client, "Arsenal Chelsea Saka")
+
+
+async def test_rebuild_of_one_category(client: httpx.AsyncClient, container: Container) -> None:
+    response = await client.post("/index/rebuild", json={"category": "standings"})
+    job = await finished_job(client, container, response.json()["job_id"])
+    assert (job["status"], job["detail"]) == ("done", "1 documents, 2 chunks")
+
+
+async def test_rebuild_while_one_runs_is_409(
+    client: httpx.AsyncClient, container: Container, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    started = asyncio.Event()
+    finish = asyncio.Event()
+
+    async def slow_rebuild(_category: str | None) -> Any:
+        started.set()
+        await finish.wait()
+        raise RuntimeError("stopped by the test")
+
+    monkeypatch.setattr(container.index, "rebuild", slow_rebuild)
+    first = await client.post("/index/rebuild", json={})
+    await started.wait()
+    running = (await client.get(f"/index/jobs/{first.json()['job_id']}")).json()
+    assert running["status"] == "running"
+    assert running["finished_at"] is None
+    assert_problem(await client.post("/index/rebuild", json={}), 409, "JOB_ALREADY_RUNNING")
+    finish.set()
+    job = await finished_job(client, container, first.json()["job_id"])
+    assert (job["status"], job["detail"]) == ("failed", "RuntimeError")
+
+
+@pytest.mark.parametrize(
+    "body", [{"category": "news"}, {"category": ["trivia"]}, {"categories": "trivia"}]
+)
+async def test_invalid_rebuild_bodies_are_422(
+    client: httpx.AsyncClient, body: dict[str, Any]
+) -> None:
+    assert_problem(await client.post("/index/rebuild", json=body), 422, "VALIDATION_ERROR")
+
+
+async def test_unknown_job_is_404(client: httpx.AsyncClient) -> None:
+    assert_problem(await client.get("/index/jobs/no-such-job"), 404, "NOT_FOUND")
+
+
+async def test_rebuild_before_the_index_loads_is_503(unloaded_app: FastAPI) -> None:
+    transport = httpx.ASGITransport(app=unloaded_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as c:
+        assert_problem(await c.post("/index/rebuild", json={}), 503, "INDEX_NOT_READY")

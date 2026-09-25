@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import threading
 from collections.abc import Sequence
 
 import numpy as np
@@ -32,6 +33,23 @@ class FakeEmbedder:
             if norm:
                 vectors[row] /= norm
         return vectors
+
+
+class GatedEmbedder(FakeEmbedder):
+    """Stops inside the next encode() until released: shows what happens mid-embedding."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.hold_next = False
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def encode(self, texts: Sequence[str]) -> np.ndarray:
+        if self.hold_next:
+            self.hold_next = False
+            self.entered.set()
+            self.release.wait(timeout=10)
+        return super().encode(texts)
 
 
 class FakeReranker:

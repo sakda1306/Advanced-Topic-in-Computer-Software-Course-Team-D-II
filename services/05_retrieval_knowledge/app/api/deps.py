@@ -8,6 +8,7 @@ from typing import Annotated
 from fastapi import Depends, Request
 
 from app.core.config import Settings
+from app.index.jobs import RebuildJobs
 from app.index.service import IndexService
 from app.kb.store import KnowledgeStore
 from app.search.aliases import AliasProvider, load_alias_file
@@ -23,6 +24,7 @@ class Container:
     index: IndexService
     searcher: Searcher
     aliases: AliasProvider
+    jobs: RebuildJobs
 
 
 def build_container(settings: Settings, *, embedder: Embedder | None = None) -> Container:
@@ -37,7 +39,8 @@ def build_container(settings: Settings, *, embedder: Embedder | None = None) -> 
         rrf_k=settings.rrf_k,
         min_vector_score=settings.min_vector_score,
     )
-    return Container(settings, store, IndexService(store, embedder), searcher, aliases)
+    index = IndexService(store, embedder)
+    return Container(settings, store, index, searcher, aliases, RebuildJobs(index))
 
 
 def get_container(request: Request) -> Container:

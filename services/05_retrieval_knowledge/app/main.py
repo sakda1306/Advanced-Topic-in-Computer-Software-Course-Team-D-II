@@ -71,6 +71,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                 await task
         if client is not None:
             await client.aclose()
+        await container.jobs.close()
         container.store.close()
 
     app = FastAPI(

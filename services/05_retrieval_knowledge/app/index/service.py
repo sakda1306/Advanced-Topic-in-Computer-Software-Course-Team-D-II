@@ -4,6 +4,10 @@ An upsert is all or nothing: chunks are embedded and the new snapshot is built b
 anything is written, the store is written in one transaction, and only then is the new
 snapshot swapped in. If any step fails, the store and the snapshot that searches use are
 both unchanged. A delete follows the same order.
+
+A rebuild re-chunks and re-embeds stored documents in two steps, so writes do not wait
+for the slow part: it embeds everything without the lock, then takes the lock, re-reads
+the store and embeds only the text that changed in the meantime before swapping.
 """
 
 from __future__ import annotations
@@ -31,6 +35,13 @@ log = get_logger(__name__)
 @dataclass(frozen=True, slots=True)
 class UpsertResult:
     upserted: int
+    chunks: int
+    index_version: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class RebuildResult:
+    documents: int
     chunks: int
     index_version: str | None
 
@@ -94,6 +105,29 @@ class IndexService:
             snapshot = await asyncio.to_thread(self._delete_sync, current, doc_id)
             self._snapshot = snapshot or current
             return snapshot is not None
+
+    async def rebuild(self, category: str | None = None) -> RebuildResult:
+        """Re-chunk and re-embed the stored documents of one category, or of all of them."""
+        # Step 1, no lock: the slow embedding; searches and writes go on meanwhile.
+        documents = await asyncio.to_thread(self._store.load_documents, category)
+        embedded = await asyncio.to_thread(self._embed_texts, documents, {})
+        # Step 2, locked: pick up what was written during step 1, then swap.
+        async with self._lock:
+            current = self._snapshot or await asyncio.to_thread(self._load_sync)
+            snapshot, result = await asyncio.to_thread(
+                self._rebuild_sync, current, category, embedded
+            )
+            self._snapshot = snapshot
+            return result
+
+    def _embed_texts(
+        self, documents: Sequence[Document], known: dict[str, np.ndarray]
+    ) -> dict[str, np.ndarray]:
+        """Vectors by chunk text; texts already in `known` are not embedded again."""
+        texts = {c.text for d in documents for c in chunk_document(d)} - known.keys()
+        ordered = sorted(texts)
+        vectors = self._embedder.encode(ordered) if ordered else []
+        return {**known, **dict(zip(ordered, vectors, strict=True))}
 
     def _load_sync(self) -> Snapshot:
         stored = self._store.load_all()
@@ -159,3 +193,35 @@ class IndexService:
         self._store.delete_document(doc_id, meta={META_VERSION: version})
         log.info("index_document_deleted", doc_id=doc_id, index_version=version)
         return snapshot
+
+    def _rebuild_sync(
+        self, current: Snapshot, category: str | None, embedded: dict[str, np.ndarray]
+    ) -> tuple[Snapshot, RebuildResult]:
+        documents = self._store.load_documents(category)
+        embedded = self._embed_texts(documents, embedded)
+        chunks = {d.doc_id: chunk_document(d) for d in documents}
+        flat = [c for d in documents for c in chunks[d.doc_id]]
+        embeddings = {c.chunk_id: embedded[c.text] for c in flat}
+        version = version_stamp(self._clock())
+        by_id = {d.doc_id: d for d in documents}
+        records = [
+            r for r in current.records if category is not None and r.document.category != category
+        ]
+        records += [_indexed(c, by_id[c.doc_id], embeddings[c.chunk_id]) for c in flat]
+        # Built before the write: if it fails, the store never sees the change.
+        snapshot = Snapshot(records, dimension=self._embedder.dimension, index_version=version)
+        self._store.replace_documents(
+            documents,
+            chunks,
+            embeddings,
+            updated_at=version,
+            meta={META_VERSION: version, META_MODEL: self._embedder.model_name},
+        )
+        log.info(
+            "index_rebuilt",
+            category=category,
+            documents=len(documents),
+            chunks=len(flat),
+            index_version=version,
+        )
+        return snapshot, RebuildResult(len(documents), len(flat), version)
