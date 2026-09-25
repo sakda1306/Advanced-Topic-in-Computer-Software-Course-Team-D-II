@@ -2,15 +2,26 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 Route = Literal["football_rag", "general_ai", "local_ai", "clarify", "decline"]
 Category = Literal["trivia", "match_report", "standings", "fixtures", "weekly_report"]
 Origin = Literal["kb", "football-data.org", "api-football", "generated"]
 Layer = Literal["guard", "rules", "classifier", "llm"]
 Fallback = Literal["retrieval_empty", "retrieval_down", "llm_fallback_provider"]
+
+
+def _reject_nul(value: str) -> str:
+    # Postgres text cannot store U+0000; refuse it here instead of failing at the database.
+    if "\x00" in value:
+        raise ValueError("must not contain NUL characters")
+    return value
+
+
+Text = Annotated[str, AfterValidator(_reject_nul)]
+"""Any user-supplied string that is stored in or compared against the database."""
 
 
 class PassThrough(BaseModel):

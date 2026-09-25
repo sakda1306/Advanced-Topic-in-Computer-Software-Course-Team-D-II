@@ -10,6 +10,7 @@ from typing import Any
 import httpx
 import pytest
 from fastapi import FastAPI
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
 
 from app.api.deps import Container
 from app.core.config import Settings
@@ -41,6 +42,23 @@ class DownTransport(httpx.AsyncBaseTransport):
         raise httpx.ConnectError("connection refused", request=request)
 
 
+class IsolatedSettings(Settings):
+    """Only the values given here and the defaults: no env vars, no `.env` file.
+
+    Otherwise a GIT_SHA or rate limit set on the machine (docker compose, CI) leaks in.
+    """
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        *_sources: PydanticBaseSettingsSource,
+        **_kwargs: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        return (init_settings,)
+
+
 def make_settings(tmp_path: Path, **overrides: Any) -> Settings:
     values: dict[str, Any] = {
         "database_url": f"sqlite+aiosqlite:///{tmp_path / 'test.db'}",
@@ -54,7 +72,7 @@ def make_settings(tmp_path: Path, **overrides: Any) -> Settings:
         "router_timeout_seconds": 2.0,
     }
     values.update(overrides)
-    return Settings(**values)
+    return IsolatedSettings(**values)
 
 
 @pytest.fixture(autouse=True)
