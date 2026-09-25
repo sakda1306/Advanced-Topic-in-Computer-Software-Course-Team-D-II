@@ -14,7 +14,7 @@ from dataclasses import dataclass, replace
 from typing import Literal
 
 from app.core.logging import get_logger
-from app.search.aliases import AliasIndex
+from app.search.aliases import AliasIndex, AliasProvider
 from app.search.embedder import Embedder
 from app.search.reranker import Reranker
 from app.search.snapshot import SearchFilters, Snapshot
@@ -46,7 +46,7 @@ class Searcher:
     def __init__(
         self,
         embedder: Embedder,
-        aliases: AliasIndex,
+        aliases: AliasIndex | AliasProvider,
         *,
         reranker: Reranker | None,
         candidate_k: int,

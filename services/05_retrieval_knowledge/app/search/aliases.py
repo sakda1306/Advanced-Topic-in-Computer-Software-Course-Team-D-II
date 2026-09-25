@@ -5,16 +5,23 @@ Matching rules, so ordinary words are not mistaken for teams:
 - Thai aliases match whole words from the tokenizer ("ผี" but not inside "ผีเสื้อ")
 - longest alias first; a matched span cannot be matched again by a shorter alias
 Only the query text is expanded; team_ids filters stay the router's decision.
+
+Nicknames come from 07 `GET /football/teams`, the same source the router uses. A
+background task refreshes them; searches read whatever set is current and never wait
+for 07. Until 07 answers, or when it answers with nothing usable, the bundled file is used.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+import httpx
 
 from app.core.logging import get_logger
 from app.search.tokenize import tokenize
@@ -97,3 +104,53 @@ def load_alias_file(path: str) -> AliasIndex:
         log.warning("aliases_unavailable", path=path, error_type=type(exc).__name__)
         return AliasIndex([])
     return AliasIndex(parse_teams(data))
+
+
+class AliasProvider:
+    """The alias set in use; replaced whole, so a search sees the old set or the new one."""
+
+    def __init__(self, fallback: AliasIndex) -> None:
+        self._current = fallback
+
+    @property
+    def current(self) -> AliasIndex:
+        return self._current
+
+    def expand(self, *texts: str | None) -> list[str]:
+        return self._current.expand(*texts)
+
+    def replace(self, index: AliasIndex) -> None:
+        self._current = index
+
+
+async def refresh_aliases(provider: AliasProvider, client: httpx.AsyncClient) -> bool:
+    """Load the aliases from 07; False, keeping the current set, when that fails."""
+    try:
+        response = await client.get("/football/teams")
+        response.raise_for_status()
+        teams = parse_teams(response.json())
+    except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        log.warning("aliases_fetch_failed", error_type=type(exc).__name__)
+        return False
+    if not any(team.aliases for team in teams):
+        # An empty answer would silently switch nickname search off.
+        log.warning("aliases_fetch_empty", teams=len(teams))
+        return False
+    # Thai aliases go through the tokenizer: CPU work, kept off the event loop.
+    provider.replace(await asyncio.to_thread(AliasIndex, teams))
+    log.info("aliases_refreshed", teams=len(teams))
+    return True
+
+
+async def keep_aliases_fresh(
+    provider: AliasProvider, client: httpx.AsyncClient, *, every: float, retry_after: float
+) -> None:
+    """Refresh every `every` seconds; after a failure, try again after `retry_after`."""
+    while True:
+        try:
+            ok = await refresh_aliases(provider, client)
+        except Exception:
+            # A crash must not end the task: nicknames would stop refreshing for good.
+            log.exception("aliases_refresh_crashed")
+            ok = False
+        await asyncio.sleep(every if ok else retry_after)

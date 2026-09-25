@@ -38,6 +38,8 @@ def make_settings(tmp_path: Path, **overrides: Any) -> Settings:
     values: dict[str, Any] = {
         "kb_db_path": str(tmp_path / "kb.sqlite"),
         "aliases_file": str(TEST_DATA / "team_aliases.json"),
+        # No 07 in tests; the alias refresh is tested with a mock transport.
+        "football_data_url": "",
         "log_level": "WARNING",
         "log_json": False,
     }

@@ -12,7 +12,7 @@ import pytest
 
 import app.index.service as service_module
 from app.core.clock import BANGKOK
-from app.index.service import IndexService, UpsertResult
+from app.index.service import IndexService, IndexStats, UpsertResult, index_stats
 from app.kb.store import META_MODEL, KnowledgeStore
 from tests.fakes import FakeEmbedder
 from tests.samples import MATCH, SAMPLE_CHUNK_COUNT, SAMPLE_DOCUMENTS
@@ -140,6 +140,57 @@ async def test_snapshot_failure_leaves_the_store_unchanged(
     assert index.snapshot is not None
     texts = {r.document.doc_id: r.document.text for r in index.snapshot.records}
     assert texts[MATCH.doc_id] == "changed"
+
+
+async def test_delete_removes_a_document_from_store_and_snapshot(store: KnowledgeStore) -> None:
+    index = service(store)
+    first = await index.upsert(SAMPLE_DOCUMENTS)
+    assert await index.delete(MATCH.doc_id) is True
+    snapshot = index.snapshot
+    assert snapshot is not None
+    assert MATCH.doc_id not in {r.chunk.doc_id for r in snapshot.records}
+    assert snapshot.size == snapshot.faiss_count == snapshot.bm25_count == SAMPLE_CHUNK_COUNT - 2
+    assert snapshot.index_version != first.index_version
+    assert store.get_meta("index_version") == snapshot.index_version
+    assert len(store.load_all()) == SAMPLE_CHUNK_COUNT - 2
+
+
+async def test_deleting_twice_is_false_and_keeps_the_version(store: KnowledgeStore) -> None:
+    index = service(store)
+    await index.upsert(SAMPLE_DOCUMENTS)
+    await index.delete(MATCH.doc_id)
+    before = index.snapshot
+    assert await index.delete(MATCH.doc_id) is False
+    assert index.snapshot is before
+
+
+async def test_delete_failure_changes_nothing(
+    store: KnowledgeStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    index = service(store)
+    await index.upsert(SAMPLE_DOCUMENTS)
+    before = index.snapshot
+
+    def broken(*_args: object, **_kwargs: object) -> None:
+        raise sqlite3.OperationalError("disk I/O error")
+
+    monkeypatch.setattr(store, "delete_document", broken)
+    with pytest.raises(sqlite3.OperationalError):
+        await index.delete(MATCH.doc_id)
+    assert index.snapshot is before
+    assert len(store.load_all()) == SAMPLE_CHUNK_COUNT
+
+
+async def test_stats_count_documents_chunks_and_categories(store: KnowledgeStore) -> None:
+    index = service(store)
+    result = await index.upsert(SAMPLE_DOCUMENTS)
+    assert index.snapshot is not None
+    assert index_stats(index.snapshot) == IndexStats(
+        documents=6,
+        chunks=SAMPLE_CHUNK_COUNT,
+        by_category={"trivia": 3, "match_report": 1, "standings": 1, "fixtures": 1},
+        index_version=result.index_version,
+    )
 
 
 async def test_restart_reuses_stored_embeddings(store: KnowledgeStore) -> None:

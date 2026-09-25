@@ -51,6 +51,8 @@ jobs:
       HF_HOME: ${{ github.workspace }}/.hf-cache
       KB_DB_PATH: ${{ github.workspace }}/kb/kb.sqlite
       RETRIEVAL_URL: http://localhost:8000
+      # No 07 here: nicknames come from the bundled file.
+      FOOTBALL_DATA_URL: ""
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

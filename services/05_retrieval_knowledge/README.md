@@ -1,12 +1,13 @@
 # 05 Retrieval / Knowledge · `retrieval`
 
-ค้นคลังความรู้ฟุตบอลแบบ hybrid (BM25 + FAISS + RRF) ให้ router ตาม [`docs/CONTRACT.md`](../../docs/CONTRACT.md) §4 · แบบระบบอยู่ที่ [`docs/05_RETRIEVAL_DESIGN.md`](../../docs/05_RETRIEVAL_DESIGN.md)
+ค้นคลังความรู้ฟุตบอลแบบ hybrid (BM25 + FAISS + RRF) ให้ router ตาม [`docs/CONTRACT.md`](../../docs/CONTRACT.md) §4 และรับเอกสารจาก 07 ตาม §6 · แบบระบบอยู่ที่ [`docs/05_RETRIEVAL_DESIGN.md`](../../docs/05_RETRIEVAL_DESIGN.md)
 
 | endpoint | ตาม | สถานะ |
 |---|---|---|
 | `POST /search` | §4 | ใช้ได้ |
 | `GET /health` · `GET /ready` | §0 · healthcheck ของ compose | ใช้ได้ |
-| `POST /index/upsert` · `DELETE /index/{doc_id}` · `GET /index/stats` · `POST /index/rebuild` · `GET /index/jobs/{job_id}` | §6 | PR ② |
+| `POST /index/upsert` · `DELETE /index/{doc_id}` · `GET /index/stats` | §6 | ใช้ได้ |
+| `POST /index/rebuild` · `GET /index/jobs/{job_id}` | §6 | PR ②b |
 
 ## ตัวแก้ปัญหาจาก week5 ที่อยู่ใน service นี้
 
@@ -28,6 +29,9 @@
 | `RERANK_MODEL` | ว่าง | ว่าง = ปิด · เช่น `cross-encoder/ms-marco-MiniLM-L-6-v2` |
 | `MIN_VECTOR_SCORE` | `0.0` | 0 = ปิด · ค่าจริงมาจาก eval (MiniLM ให้ cosine ไทย-อังกฤษต่ำ ราว 0.26) |
 | `CANDIDATE_K` · `RRF_K` | `20` · `60` | |
+| `FOOTBALL_DATA_URL` | `http://football-data:8000` | ดึงชื่อเล่นทีมจาก `GET /football/teams` · ว่าง = ใช้ไฟล์สำรองอย่างเดียว |
+| `ALIASES_CACHE_SECONDS` · `ALIASES_RETRY_SECONDS` | `3600` · `60` | ดึงใหม่ทุกกี่วินาที · ดึงไม่ได้แล้วลองใหม่ในกี่วินาที |
+| `ALIASES_TIMEOUT_SECONDS` | `3` | |
 | `GIT_SHA` | `0.1.0` | ค่า `version` ใน `/health` |
 
 ## รัน
@@ -46,7 +50,7 @@ uvicorn app.main:app --port 8005 --workers 1                      # เอกส
 ```bash
 pytest -q                 # ใช้ FakeEmbedder ไม่ต้องโหลดโมเดล
 pytest -q -m model        # โมเดลจริงกับคลังจริง
-RETRIEVAL_URL=http://localhost:8005 python scripts/smoke.py
+RETRIEVAL_URL=http://localhost:8005 python scripts/smoke.py   # รวม upsert → search → delete ด้วยเอกสารทดสอบที่ลบคืนเอง
 ruff check . && ruff format --check .
 ```
 
@@ -55,4 +59,6 @@ ruff check . && ruff format --check .
 - **SQLite คือแหล่งจริง** FAISS + BM25 เป็น snapshot ในหน่วยความจำที่สร้างจากชุด chunk เดียวกัน แล้วสลับทีเดียว `/search` ไม่เคยเห็น index ครึ่ง ๆ
 - **05 ไม่ผ่อน filter เอง** ไม่เจอ = `200` + `chunks: []` การค้นซ้ำโดยตัด matchweek เป็นของ router (§3)
 - **filter ที่ไม่รู้จัก → 422** เพื่อไม่ให้ filter ที่พิมพ์ผิดคืนผลแบบไม่กรอง
-- **`data/team_aliases.json` เป็นไฟล์สำรอง** ตัวจริงเป็นของ 07 (PR ② จะดึงจาก `GET /football/teams`)
+- **ชื่อเล่นทีมมาจาก 07** task เบื้องหลังดึง `GET /football/teams` ทุก `ALIASES_CACHE_SECONDS` `/search` ไม่เคยรอ 07 · ก่อน 07 ตอบ หรือ 07 ล่ม / ตอบชุดว่าง ใช้ `data/team_aliases.json` (หรือชุดล่าสุดที่ดึงได้)
+- **upsert และ delete สำเร็จหรือไม่สำเร็จทั้งก้อน** embed และสร้าง snapshot ใหม่ก่อนเขียน SQLite ขั้นไหนล้ม → 500 และทั้ง SQLite กับ `/search` ยังเป็นรุ่นเดิม
+- **`by_category` ใน `/index/stats` นับเป็นจำนวนเอกสาร** ต่อ category ไม่ใช่จำนวน chunk
