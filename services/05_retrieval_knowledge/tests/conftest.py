@@ -1,17 +1,21 @@
-"""Test settings that ignore the machine's env, an app client, Problem-JSON checks."""
+"""Test settings that ignore the machine's env, an app on the sample KB, Problem-JSON checks."""
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
+from fastapi import FastAPI
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
 
+from app.api.deps import Container, build_container
 from app.core.config import Settings
 from app.main import create_app
+from tests.fakes import FakeEmbedder
+from tests.samples import SAMPLE_DOCUMENTS
 
 TEST_DATA = Path(__file__).parent / "data"
 
@@ -47,11 +51,36 @@ def settings(tmp_path: Path) -> Settings:
 
 
 @pytest.fixture
-async def client(settings: Settings) -> AsyncIterator[httpx.AsyncClient]:
-    app = create_app(settings)
+def embedder() -> FakeEmbedder:
+    return FakeEmbedder()
+
+
+@pytest.fixture
+async def container(settings: Settings, embedder: FakeEmbedder) -> AsyncIterator[Container]:
+    built = build_container(settings, embedder=embedder)
+    await built.index.upsert(SAMPLE_DOCUMENTS)
+    yield built
+    built.store.close()
+
+
+@pytest.fixture
+def app(container: Container) -> FastAPI:
+    return create_app(container.settings, container)
+
+
+@pytest.fixture
+async def client(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as c:
         yield c
+
+
+@pytest.fixture
+def unloaded_app(settings: Settings, embedder: FakeEmbedder) -> Iterator[FastAPI]:
+    """An app whose index has not finished loading (lifespan does not run under httpx)."""
+    built = build_container(settings, embedder=embedder)
+    yield create_app(settings, built)
+    built.store.close()
 
 
 def assert_problem(response: httpx.Response, status: int, code: str) -> dict[str, Any]:
