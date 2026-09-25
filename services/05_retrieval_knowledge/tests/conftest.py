@@ -38,10 +38,10 @@ def make_settings(tmp_path: Path, **overrides: Any) -> Settings:
     values: dict[str, Any] = {
         "kb_db_path": str(tmp_path / "kb.sqlite"),
         "aliases_file": str(TEST_DATA / "team_aliases.json"),
-        # No model downloads in unit tests; the real reranker is tested under -m model.
-        "rerank_model": "",
         "log_level": "WARNING",
         "log_json": False,
+        # No model downloads in unit tests; the real reranker is tested under -m model.
+        "rerank_model": "",
     }
     values.update(overrides)
     return IsolatedSettings(**values)
