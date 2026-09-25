@@ -24,8 +24,12 @@ def decode_cursor(cursor: str) -> tuple[datetime, str]:
     try:
         padded = cursor + "=" * (-len(cursor) % 4)
         data = json.loads(base64.urlsafe_b64decode(padded))
-        return datetime.fromisoformat(data["t"]), str(data["id"])
-    except (ValueError, KeyError, TypeError) as exc:
+        created_at = datetime.fromisoformat(data["t"])
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=UTC)
+        # Also rejects times that fall outside the datetime range once moved to UTC.
+        return created_at.astimezone(UTC), str(data["id"])
+    except (ValueError, KeyError, TypeError, OverflowError) as exc:
         raise AppError(
             ErrorCode.VALIDATION_ERROR,
             errors=[FieldError("cursor", "invalid cursor", "invalid")],

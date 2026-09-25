@@ -5,8 +5,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Request, Response
 
 from app.api.deps import ContainerDep, CurrentUser, DbDep
+from app.core.errors import AppError, ErrorCode
 from app.core.security import create_access_token
-from app.infra.rate_limit import enforce_rate_limit
+from app.infra.rate_limit import enforce_failure_limit, record_failure
 from app.schemas.common import Ok
 from app.schemas.user import LoginRequest, PreferencesRequest, UserEnvelope, UserOut
 from app.services.users import authenticate
@@ -24,10 +25,16 @@ async def login(
 ) -> UserEnvelope:
     settings = container.settings
     client_ip = request.client.host if request.client else "unknown"
-    await enforce_rate_limit(
-        container.store, "login", client_ip, settings.login_rate_limit_per_minute
+    limit_key = f"{client_ip}:{body.username.strip().lower()}"
+    await enforce_failure_limit(
+        container.store, "login", limit_key, settings.login_rate_limit_per_minute
     )
-    user = await authenticate(db, body.username, body.password)
+    try:
+        user = await authenticate(db, body.username, body.password)
+    except AppError as exc:
+        if exc.code is ErrorCode.UNAUTHENTICATED:
+            await record_failure(container.store, "login", limit_key)
+        raise
     response.set_cookie(
         settings.cookie_name,
         create_access_token(settings, user.id, user.role),

@@ -1,13 +1,15 @@
 """Small key-value store for rate limits, short caches and in-flight markers.
 
 Redis in docker compose, an in-process dict when REDIS_URL is empty (tests / one
-worker). Redis errors never fail a request: limits fail open and caches miss.
+worker). Redis errors never fail a request: limits fail open and caches miss. After an
+error Redis is left alone for a few seconds, so a request does not wait on every call.
 """
 
 from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from typing import Any, Protocol
 
 from redis.asyncio import Redis
@@ -19,6 +21,11 @@ log = get_logger(__name__)
 
 
 class Store(Protocol):
+    @property
+    def available(self) -> bool:
+        """False while the backing store is known to be down (reads then always miss)."""
+        ...
+
     async def get_json(self, key: str) -> Any | None: ...
 
     async def set_json(self, key: str, value: Any, ttl_seconds: int) -> None: ...
@@ -33,6 +40,8 @@ class Store(Protocol):
 
 
 class MemoryStore:
+    available = True
+
     def __init__(self) -> None:
         self._data: dict[str, tuple[float, Any]] = {}
 
@@ -67,30 +76,55 @@ class MemoryStore:
 
 
 class RedisStore:
-    def __init__(self, redis: Redis) -> None:
+    def __init__(
+        self,
+        redis: Redis,
+        *,
+        down_seconds: float = 10.0,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         self._redis = redis
+        self._down_seconds = down_seconds
+        self._clock = clock
+        self._down_until = 0.0
+
+    @property
+    def available(self) -> bool:
+        return self._clock() >= self._down_until
+
+    def _failed(self, exc: Exception) -> None:
+        log.warning("store_unavailable", error_type=type(exc).__name__)
+        self._down_until = self._clock() + self._down_seconds
 
     async def get_json(self, key: str) -> Any | None:
+        if not self.available:
+            return None
         try:
             raw = await self._redis.get(key)
         except (RedisError, OSError) as exc:
-            log.warning("store_unavailable", error_type=type(exc).__name__)
+            self._failed(exc)
             return None
         return json.loads(raw) if raw else None
 
     async def set_json(self, key: str, value: Any, ttl_seconds: int) -> None:
+        if not self.available:
+            return
         try:
             await self._redis.set(key, json.dumps(value), ex=ttl_seconds)
         except (RedisError, OSError) as exc:
-            log.warning("store_unavailable", error_type=type(exc).__name__)
+            self._failed(exc)
 
     async def delete(self, key: str) -> None:
+        if not self.available:
+            return
         try:
             await self._redis.delete(key)
         except (RedisError, OSError) as exc:
-            log.warning("store_unavailable", error_type=type(exc).__name__)
+            self._failed(exc)
 
     async def hit(self, key: str, window_seconds: int) -> tuple[int, int]:
+        if not self.available:
+            return 0, 0
         try:
             async with self._redis.pipeline(transaction=True) as pipe:
                 pipe.incr(key)
@@ -98,7 +132,7 @@ class RedisStore:
                 pipe.ttl(key)
                 count, _, ttl = await pipe.execute()
         except (RedisError, OSError) as exc:
-            log.warning("store_unavailable", error_type=type(exc).__name__)
+            self._failed(exc)
             return 0, 0
         return int(count), max(int(ttl), 1)
 
