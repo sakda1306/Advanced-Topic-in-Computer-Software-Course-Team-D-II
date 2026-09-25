@@ -165,3 +165,97 @@ async def test_stats_before_the_index_loads_are_503(unloaded_app: FastAPI) -> No
     transport = httpx.ASGITransport(app=unloaded_app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as c:
         assert_problem(await c.get("/index/stats"), 503, "INDEX_NOT_READY")
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "body"),
+    [
+        ("POST", "/index/upsert", {"documents": [NEW_MATCH]}),
+        ("DELETE", "/index/match-2026-mw06-64-65", None),
+    ],
+)
+async def test_writes_before_the_index_loads_are_503(
+    unloaded_app: FastAPI, method: str, path: str, body: dict[str, Any] | None
+) -> None:
+    # 07 treats a failed index write as a failed job and retries it (CONTRACT §6).
+    transport = httpx.ASGITransport(app=unloaded_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as c:
+        response = await c.request(method, path, json=body)
+        assert_problem(response, 503, "INDEX_NOT_READY")
+
+
+def football_data_payload() -> list[dict[str, Any]]:
+    """Documents in the shape 07 (#6) builds them: `_documents()` and `report_doc()`."""
+    common = {"season": "2026", "fetched_at": "2026-09-28T09:00:00+07:00", "url": None}
+    return [
+        {
+            **common,
+            "doc_id": "match-2026-mw06-58-57",
+            "title": "Aston Villa FC 0-2 Arsenal FC",
+            "text": "Premier League 2026, matchweek 6. Aston Villa FC 0-2 Arsenal FC. "
+            "Kickoff: 2026-09-27T21:00:00+07:00.",
+            "category": "match_report",
+            "origin": "football-data.org",
+            "matchweek": 6,
+            "team_ids": [58, 57],
+            "date": "2026-09-27",
+        },
+        {
+            **common,
+            "doc_id": "standings-2026-mw06",
+            "title": "Premier League 2026 standings after matchweek 6",
+            "text": "## Standings\n1. Arsenal FC: 16 points, played 6, goal difference 9\n"
+            "2. Liverpool FC: 15 points, played 6, goal difference 8",
+            "category": "standings",
+            "origin": "football-data.org",
+            "matchweek": 6,
+            "team_ids": [57, 64],
+            "date": "2026-09-28",
+        },
+        {
+            # A team with no scheduled match left: 07 sends only the heading.
+            **common,
+            "doc_id": "fixtures-2026-team-58",
+            "title": "Premier League 2026 fixtures for team 58",
+            "text": "## Upcoming fixtures\n",
+            "category": "fixtures",
+            "origin": "football-data.org",
+            "matchweek": None,
+            "team_ids": [58],
+            "date": "2026-09-28",
+        },
+        {
+            **common,
+            "doc_id": "weekly-2026-mw06",
+            "title": "Premier League weekly report · matchweek 6",
+            "text": "## Summary\nArsenal won 2-0 at Aston Villa.",
+            "category": "weekly_report",
+            "origin": "generated",
+            "matchweek": 6,
+            "team_ids": [],
+            "date": "2026-09-28",
+        },
+    ]
+
+
+async def test_documents_from_football_data_round_trip(client: httpx.AsyncClient) -> None:
+    before = (await client.get("/index/stats")).json()
+    response = await upsert(client, *football_data_payload())
+    assert response.status_code == 200, response.text
+    assert response.json()["upserted"] == 4
+    assert (await client.get("/index/stats")).json()["documents"] == before["documents"] + 4
+    found = await client.post(
+        "/search",
+        json={
+            "query": "Aston Villa vs Arsenal result",
+            "query_original": "วิลล่าเจอปืนใหญ่ผลเป็นไง",
+            "filters": {"category": ["match_report"], "matchweek": 6},
+        },
+    )
+    assert found.json()["chunks"][0]["source"]["doc_id"] == "match-2026-mw06-58-57"
+    # Re-ingesting the same documents changes nothing.
+    again = await upsert(client, *football_data_payload())
+    assert again.json()["index_version"] == response.json()["index_version"]
+    # Unpublishing the weekly report removes it.
+    assert (await client.delete("/index/weekly-2026-mw06")).json() == {"deleted": True}
+    assert (await client.get("/index/stats")).json()["documents"] == before["documents"] + 3

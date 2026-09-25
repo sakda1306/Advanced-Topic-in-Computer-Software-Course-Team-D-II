@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import sqlite3
+import threading
 from collections.abc import Iterator
 from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -214,3 +217,39 @@ async def test_new_embedding_model_reembeds_everything_once(store: KnowledgeStor
     again = FakeEmbedder("model-b")
     await service(store, again).load()
     assert again.calls == []
+
+
+async def test_a_started_write_finishes_even_if_its_caller_is_cancelled(
+    store: KnowledgeStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Shutdown cancels requests and jobs, but a worker thread cannot be stopped midway:
+    # once SQLite is written the snapshot must be swapped too, or the two disagree.
+    index = service(store)
+    await index.upsert(SAMPLE_DOCUMENTS)
+    entered, release = threading.Event(), threading.Event()
+    write = store.replace_documents
+
+    def slow_write(*args: Any, **kwargs: Any) -> None:
+        entered.set()
+        release.wait(10)
+        write(*args, **kwargs)
+
+    monkeypatch.setattr(store, "replace_documents", slow_write)
+    caller = asyncio.create_task(index.upsert([replace(MATCH, text="Arsenal 3-1 Chelsea.")]))
+    await asyncio.to_thread(entered.wait, 10)
+    caller.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await caller
+    drained = asyncio.create_task(index.drain())
+    await asyncio.sleep(0.05)
+    assert not drained.done()  # still waiting for the worker: the store must stay open
+    release.set()
+    await drained
+    assert index.snapshot is not None
+    assert index.snapshot.index_version == store.get_meta("index_version")
+    texts = {r.document.doc_id: r.document.text for r in index.snapshot.records}
+    assert texts[MATCH.doc_id] == "Arsenal 3-1 Chelsea."
+
+
+async def test_drain_with_nothing_running_returns(store: KnowledgeStore) -> None:
+    await service(store).drain()

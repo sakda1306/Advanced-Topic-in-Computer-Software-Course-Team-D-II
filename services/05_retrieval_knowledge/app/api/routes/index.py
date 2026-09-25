@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Path
 
-from app.api.deps import ContainerDep
+from app.api.deps import Container, ContainerDep
 from app.core.errors import AppError, ErrorCode
 from app.core.ids import current_request_id
 from app.index.service import index_stats
@@ -15,8 +15,15 @@ from app.schemas.index import DeleteResponse, StatsResponse, UpsertRequest, Upse
 router = APIRouter(prefix="/index", tags=["index"])
 
 
+def _ready(container: Container) -> None:
+    # Writes wait for the startup load like searches do; 07 retries a failed write (§6).
+    if container.index.snapshot is None:
+        raise AppError(ErrorCode.INDEX_NOT_READY)
+
+
 @router.post("/upsert")
 async def upsert(body: UpsertRequest, container: ContainerDep) -> UpsertResponse:
+    _ready(container)
     result = await container.index.upsert([d.to_document() for d in body.documents])
     return UpsertResponse(
         request_id=body.request_id or current_request_id(),
@@ -44,4 +51,5 @@ async def stats(container: ContainerDep) -> StatsResponse:
 async def delete(
     doc_id: Annotated[str, Path(max_length=128)], container: ContainerDep
 ) -> DeleteResponse:
+    _ready(container)
     return DeleteResponse(deleted=await container.index.delete(doc_id))
