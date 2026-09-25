@@ -83,7 +83,7 @@ services/05_retrieval_knowledge/
 
 - `doc_id` = `trivia-NNNN` จากลำดับข้อในไฟล์ต้นฉบับ (0001–1996) · ไม่เปลี่ยนแม้ตัดข้อซ้ำ
 - ทำความสะอาด: ตัดช่องว่างหัวท้าย · ยุบช่องว่างซ้ำ
-- เทียบข้อซ้ำด้วยข้อความที่ normalize แล้ว (ตัวพิมพ์เล็ก · ไม่มีเครื่องหมายวรรคตอน)
+- เทียบคำถามด้วยข้อความที่ normalize แล้ว (ตัวพิมพ์เล็ก · ไม่มีเครื่องหมายวรรคตอน · ไม่มีเครื่องหมายเหนืออักษร) · เทียบคำตอบแบบเดียวกันและไม่สนลำดับคำ ("Petr Cech" = "Petr Čech") · คลังจริง: 1,996 ข้อ → ข้อซ้ำ 39 · ข้อขัดแย้ง 2 กลุ่ม (523/1839, 1804/1838) → 1,953 เอกสาร
   - คำถามซ้ำ + คำตอบเดียวกัน → เก็บข้อแรก
   - คำถามซ้ำ + คำตอบต่างกัน (ขัดแย้ง) → **ตัดทั้งกลุ่ม** · log รายงานจำนวนและ id ที่ตัด
 - metadata: `category: "trivia"` · `origin: "kb"` · `season` / `matchweek` / `fetched_at` = null · `team_ids: []` · `title` = คำถาม (≤ 120 ตัวอักษร) · `topic` = หมวดเดิม (World Cup, Ballon d'Or, …) เป็นฟิลด์เสริมแบบ optional ตาม §0
@@ -95,10 +95,10 @@ services/05_retrieval_knowledge/
 
 **รับ**: `query` (ไม่ว่าง ≤ 1000 ตัวอักษร) · `query_original` (ไม่ส่ง = ใช้ `query`) · `top_k` 1–20 (ค่าเริ่มต้น 5) · `filters` · `mode` (`hybrid` ค่าเริ่มต้น | `bm25` | `vector`) · snapshot ยังไม่พร้อม → 503 `INDEX_NOT_READY`
 
-1. **ขยายคำค้นด้วยชื่อเล่น (week5 #1)** — หาชื่อเล่นใน `query` และ `query_original` แล้วต่อชื่อทางการท้ายคำค้นฝั่ง BM25 · จับชื่อยาวสุดก่อน · ชื่ออังกฤษต้องตรงทั้งคำ · ชื่อไทยสั้นกว่า 3 ตัวอักษรต้องตรงกับคำที่ตัดด้วย pythainlp ทั้งคำ ("ผี" ต้องไม่จับ "ผีเสื้อ") · ไม่เพิ่ม `team_ids` ใน filter เอง
+1. **ขยายคำค้นด้วยชื่อเล่น (week5 #1)** — หาชื่อเล่นใน `query` และ `query_original` แล้วต่อชื่อทางการท้ายคำค้นฝั่ง BM25 · จับชื่อยาวสุดก่อน · ชื่ออังกฤษต้องตรงทั้งคำ · ชื่อไทยต้องตรงกับลำดับคำที่ตัดด้วย pythainlp ทั้งคำ ("ผี" ต้องไม่จับ "ผีเสื้อ" · "แมนยู" ถูกตัดเป็น แมน|ยู ทั้งใน alias และในประโยค จึงยังจับได้) · ไม่เพิ่ม `team_ids` ใน filter เอง
 2. **กรอง metadata ก่อนค้น** — `category` อยู่ในรายการ · `season` / `matchweek` ตรง · `team_ids` มีตัวใดตัวหนึ่งตรง · `date_from` / `date_to` เทียบกับ `date` (เอกสารไม่มีวันที่ถูกตัดเมื่อมี filter วันที่) · ไม่เหลือ chunk → `200` + `chunks: []` · **05 ไม่ผ่อน filter เอง** (ลำดับถอยเป็นของ router §3)
 3. **BM25** (hybrid, bm25) — คำค้นที่ขยายแล้ว · คะแนนเฉพาะ chunk ที่ผ่าน filter · เก็บ `CANDIDATE_K` อันดับที่คะแนน > 0
-4. **vector** (hybrid, vector) — embed `query_original` · FAISS ผ่าน `IDSelectorBatch` เฉพาะ chunk ที่ผ่าน filter · เก็บ `CANDIDATE_K` อันดับที่ `vector_score ≥ MIN_VECTOR_SCORE`
+4. **vector** (hybrid, vector) — embed `query_original` · FAISS ผ่าน `IDSelectorBatch` เฉพาะ chunk ที่ผ่าน filter · เก็บ `CANDIDATE_K` อันดับ (ตัดที่ `vector_score < MIN_VECTOR_SCORE` เมื่อค่ามากกว่า 0)
 5. **รวม** — hybrid: `score` = RRF (`RRF_K` = 60) · โหมดเดี่ยว: `score` = คะแนนดิบของวิธีนั้น · เรียงมาก → น้อย
 6. **rerank** (เมื่อตั้ง `RERANK_MODEL`) — ให้คะแนนผู้เข้ารอบ `CANDIDATE_K` อันดับด้วย `query` · ใส่ `rerank_score` แล้วเรียงตามนั้น · โหลดไม่ได้หรือล้ม → ใช้ผลข้อ 5 ต่อและเขียน log
 7. **ตอบ** — ตัดเหลือ `top_k` · แต่ละ chunk: `chunk_id`, `text`, `score`, `bm25_score`, `vector_score` (null ถ้าวิธีนั้นไม่เจอ), `rerank_score`, `source` (Source ตาม §0 · `ref` = ลำดับ 1..n) · พร้อม `request_id`, `latency_ms`, `index_version`
@@ -158,7 +158,7 @@ services/05_retrieval_knowledge/
 | `EMBEDDING_MODEL` | `paraphrase-multilingual-MiniLM-L12-v2` | เปลี่ยน = embed ใหม่ทั้งหมดตอนเริ่ม |
 | `HF_HOME` | `/models` | cache โมเดล อยู่ใน volume |
 | `RERANK_MODEL` | ว่าง | ว่าง = ปิด |
-| `MIN_VECTOR_SCORE` | `0.3` | ปรับจาก eval |
+| `MIN_VECTOR_SCORE` | `0.0` | 0 = ปิด · MiniLM ให้ cosine ไทย-อังกฤษต่ำ (ราว 0.26) ค่าจริงมาจาก eval |
 | `CANDIDATE_K` / `RRF_K` | `20` / `60` | |
 | `FOOTBALL_DATA_URL` | `http://football-data:8000` | ใช้ดึงชื่อเล่นทีม |
 | `ALIASES_CACHE_SECONDS` | `3600` | |
