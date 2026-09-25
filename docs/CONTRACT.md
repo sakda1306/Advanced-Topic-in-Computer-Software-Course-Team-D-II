@@ -373,7 +373,7 @@ auth ใช้ httpOnly cookie ชื่อ `access_token` (JWT HS256, อาย
 
 | code | status | เมื่อไร |
 |---|---|---|
-| `INDEX_NOT_READY` | 503 | index ยังโหลดไม่เสร็จตอน retrieval เริ่มระบบ · ใช้กับ `/search` (§4) และ `/index/stats` (§6) · router ถือเป็น retrieval ล่ม แล้วถอยตามลำดับของเส้น `football_rag` (§3) |
+| `INDEX_NOT_READY` | 503 | index ยังโหลดไม่เสร็จตอน retrieval เริ่มระบบ · ใช้กับ `/search` (§4) และทุก endpoint ของ §6 (`/index/upsert`, `DELETE /index/{doc_id}`, `/index/stats`, `/index/rebuild`) · router ถือเป็น retrieval ล่ม แล้วถอยตามลำดับของเส้น `football_rag` (§3) |
 
 ## 5. router / football-data → generation
 
@@ -457,7 +457,7 @@ auth ใช้ httpOnly cookie ชื่อ `access_token` (JWT HS256, อาย
 ### `GET /index/stats` → `{documents, chunks, by_category: {...}, index_version}`
 
 ### `POST /index/rebuild` (เรียกโดย api ผ่านหน้า admin · **Could**)
-body `{request_id, category?}` (ไม่ใส่ = ทั้งหมด) → `202 {job_id}` · สร้าง BM25 + FAISS ใหม่จากเอกสารที่เก็บไว้ แล้วสลับ index ทีเดียว (ระหว่างสร้าง `/search` ใช้ index เดิมได้ตามปกติ) · ดูสถานะที่ `GET /index/jobs/{job_id}` → `{job_id, status, started_at, finished_at, detail}`
+body `{request_id, category?}` (ไม่ใส่ = ทั้งหมด) → `202 {job_id}` · สร้าง BM25 + FAISS ใหม่จากเอกสารที่เก็บไว้ แล้วสลับ index ทีเดียว (ระหว่างสร้าง `/search` ใช้ index เดิมได้ตามปกติ) · ดูสถานะที่ `GET /index/jobs/{job_id}` → `{job_id, status, started_at, finished_at, detail}` · job เก็บในหน่วยความจำของ 05 (50 รายการล่าสุด) **restart แล้วหาย → 404** · หน้า admin ให้ถือว่างานนั้นจบไม่แน่ชัดแล้วสั่งใหม่ได้ (rebuild ที่ไม่จบไม่เปลี่ยน index)
 
 **รูปแบบ `doc_id` (ล็อกแล้ว — upsert ทับด้วย id นี้ จึงไม่มีเอกสารซ้ำ)**
 
@@ -473,7 +473,7 @@ body `{request_id, category?}` (ไม่ใส่ = ทั้งหมด) → 
 - upsert ต้องอัปเดตทั้ง BM25 และ FAISS ให้ตรงกัน ก่อนเปลี่ยน `index_version`
 - **ข้อความใน `text` เป็นภาษาอังกฤษ** (ให้ตรงกับคลัง trivia) — ชื่อเล่นภาษาไทยจัดการด้วย alias ที่ฝั่ง query
 - ขอบเขตของ upsert: 1–100 เอกสารต่อคำขอ · body ≤ 5 MB (เกิน → 413) · field ผิด / `doc_id` ไม่ตรงรูปแบบของ category → 422 ทั้งคำขอ · ล้มกลางทาง → 500 และ index ไม่เปลี่ยนเลย
-- `INDEX_NOT_READY` (503) ใช้กับ `GET /index/stats` ด้วย (ดูตารางใน §4)
+- index ยังโหลดไม่เสร็จ → ทุก endpoint ของ §6 ได้ `INDEX_NOT_READY` (503) (ดูตารางใน §4) · 07 ถือ upsert / delete ที่ล้มเป็น job ล้มแล้ว retry
 
 ## 7. api → football-data
 
@@ -580,4 +580,4 @@ body `{request_id, category?}` (ไม่ใส่ = ทั้งหมด) → 
 |---|---|---|
 | v1.0 | (D1) | ฉบับแรก |
 | v1.1 | (D1) | **เพิ่มระบบ Admin** — §1.1 ใหม่ (`/api/admin/*`, สิทธิ์ `role=admin`, audit, error code ใหม่) · ย้าย `GET /api/stats` → `GET /api/admin/stats` · รายงานประจำสัปดาห์มีสถานะ `draft → published → unpublished` และเข้า KB เมื่อ publish เท่านั้น (+ env `REPORT_AUTO_PUBLISH`) · §6 เพิ่ม `POST /index/rebuild` · §7 เพิ่ม `GET /jobs`, endpoint จัดการรายงาน, `triggered_by` · field เดิมไม่ถูกลบ/เปลี่ยนชื่อ ยกเว้น path `/api/stats` ที่ย้าย |
-| v1.2 | (D4) | **เพิ่มเท่านั้น ไม่เปลี่ยน field เดิม** — §4 / §6 เพิ่ม error `INDEX_NOT_READY` (503) · §6 ระบุขอบเขตของ upsert (1–100 เอกสาร, 5 MB, 422 ทั้งคำขอ) · §7 เพิ่ม retrieval เป็นผู้เรียก `GET /football/teams` · §4 ฝั่ง vector ของ 05 ใช้ `query` แทน `query_original` (ผล eval: ชุด match hit@1 0.70 → 0.90) field และความหมายต่อผู้เรียกเหมือนเดิม — router ต้องส่ง `query` เป็นอังกฤษที่เขียนใหม่แล้ว |
+| v1.2 | (D4) | **เพิ่มเท่านั้น ไม่เปลี่ยน field เดิม** — §4 / §6 เพิ่ม error `INDEX_NOT_READY` (503) · §6 ระบุขอบเขตของ upsert (1–100 เอกสาร, 5 MB, 422 ทั้งคำขอ) · §7 เพิ่ม retrieval เป็นผู้เรียก `GET /football/teams` · §4 ฝั่ง vector ของ 05 ใช้ `query` แทน `query_original` field และความหมายต่อผู้เรียกเหมือนเดิม — router ต้องส่ง `query` เป็นอังกฤษที่เขียนใหม่แล้ว · **มีผลเมื่อ PR #10 merge** (ก่อนนั้นโค้ดยัง embed `query_original`) · ตัวเลขที่ใช้ตัดสิน (ชุด match hit@1 0.70 → 0.90) วัดกับเอกสาร**จำลอง** 20 คำถามและคำอังกฤษที่เตรียมไว้ ไม่ใช่เอกสารของ 07 หรือคำที่ router เขียนจริง ต้องวัดซ้ำหลังต่อระบบ · §6 upsert / delete / rebuild ตอบ `INDEX_NOT_READY` ตอน index ยังโหลดไม่เสร็จ · §6 job ของ rebuild หายเมื่อ restart |
