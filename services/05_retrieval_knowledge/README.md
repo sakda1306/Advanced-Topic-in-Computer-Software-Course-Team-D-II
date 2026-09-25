@@ -59,7 +59,8 @@ ruff check . && ruff format --check .
 - **SQLite คือแหล่งจริง** FAISS + BM25 เป็น snapshot ในหน่วยความจำที่สร้างจากชุด chunk เดียวกัน แล้วสลับทีเดียว `/search` ไม่เคยเห็น index ครึ่ง ๆ
 - **05 ไม่ผ่อน filter เอง** ไม่เจอ = `200` + `chunks: []` การค้นซ้ำโดยตัด matchweek เป็นของ router (§3)
 - **filter ที่ไม่รู้จัก → 422** เพื่อไม่ให้ filter ที่พิมพ์ผิดคืนผลแบบไม่กรอง
-- **ชื่อเล่นทีมมาจาก 07** task เบื้องหลังดึง `GET /football/teams` ทุก `ALIASES_CACHE_SECONDS` `/search` ไม่เคยรอ 07 · ก่อน 07 ตอบ หรือ 07 ล่ม / ตอบชุดว่าง ใช้ `data/team_aliases.json` (หรือชุดล่าสุดที่ดึงได้)
-- **upsert และ delete สำเร็จหรือไม่สำเร็จทั้งก้อน** embed และสร้าง snapshot ใหม่ก่อนเขียน SQLite ขั้นไหนล้ม → 500 และทั้ง SQLite กับ `/search` ยังเป็นรุ่นเดิม
+- **ชื่อเล่นทีมมาจาก 07** task เบื้องหลังดึง `GET /football/teams` ทุก `ALIASES_CACHE_SECONDS` `/search` ไม่เคยรอ 07 · ก่อน 07 ตอบ หรือ 07 ล่ม / ตอบชุดว่าง ใช้ `data/team_aliases.json` (หรือชุดล่าสุดที่ดึงได้) · ชุดของ 07 **รวม** กับไฟล์สำรองตาม `team_id` (ชื่อทางการใช้ของ 07 · ชื่อเล่นเก็บทั้งสองแหล่ง) ทีมที่ 07 ไม่มีชื่อเล่นจึงยังค้นด้วยชื่อเล่นได้
+- **upsert และ delete สำเร็จหรือไม่สำเร็จทั้งก้อน** embed และสร้าง snapshot ใหม่ก่อนเขียน SQLite ขั้นไหนล้ม → 500 และทั้ง SQLite กับ `/search` ยังเป็นรุ่นเดิม · เริ่มเขียนแล้วทำจนจบแม้ผู้เรียกถูกยกเลิก (shutdown / request หลุด) และตอนปิด service รอให้จบก่อนปิด SQLite
+- **index ยังโหลดไม่เสร็จ → upsert / delete ได้ 503 `INDEX_NOT_READY`** เหมือน `/search` และ `/index/stats` · 07 ถือเป็น job ล้มแล้ว retry
 - **`by_category` ใน `/index/stats` นับเป็นจำนวนเอกสาร** ต่อ category ไม่ใช่จำนวน chunk
 - **rebuild ไม่ขวาง upsert** embed ทั้งชุดโดยไม่ถือ lock แล้วค่อยถือ lock อ่าน SQLite ใหม่ embed เฉพาะที่เปลี่ยนระหว่างนั้นแล้วสลับ · คลังจริง 1,954 chunk ใช้ราว 24 วินาที ระหว่างนั้น upsert ตอบใน 78 ms · rebuild ได้ทีละงาน (ซ้ำ → 409) · job อยู่ในหน่วยความจำ 50 รายการล่าสุด restart แล้วหาย

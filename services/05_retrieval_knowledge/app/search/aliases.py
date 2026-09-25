@@ -9,6 +9,8 @@ Only the query text is expanded; team_ids filters stay the router's decision.
 Nicknames come from 07 `GET /football/teams`, the same source the router uses. A
 background task refreshes them; searches read whatever set is current and never wait
 for 07. Until 07 answers, or when it answers with nothing usable, the bundled file is used.
+07's teams are merged into the bundled file by team_id, not swapped in for it: a team 07
+has no nicknames for keeps the bundled ones.
 """
 
 from __future__ import annotations
@@ -48,8 +50,25 @@ def parse_teams(data: Mapping[str, Any]) -> list[TeamAliases]:
     return teams
 
 
+def merge_teams(base: Sequence[TeamAliases], feed: Sequence[TeamAliases]) -> list[TeamAliases]:
+    """Teams of both, by team_id: the feed's names win, nicknames from both are kept."""
+    merged = {team.team_id: team for team in base}
+    for team in feed:
+        known = merged.get(team.team_id)
+        if known is None:
+            merged[team.team_id] = team
+            continue
+        merged[team.team_id] = TeamAliases(
+            team.team_id,
+            team.names or known.names,
+            tuple(dict.fromkeys((*team.aliases, *known.aliases))),
+        )
+    return list(merged.values())
+
+
 class AliasIndex:
     def __init__(self, teams: Sequence[TeamAliases]) -> None:
+        self.teams = tuple(teams)
         english: list[tuple[re.Pattern[str], TeamAliases]] = []
         thai: list[tuple[tuple[str, ...], TeamAliases]] = []
         for team in teams:
@@ -110,6 +129,7 @@ class AliasProvider:
     """The alias set in use; replaced whole, so a search sees the old set or the new one."""
 
     def __init__(self, fallback: AliasIndex) -> None:
+        self.fallback = fallback
         self._current = fallback
 
     @property
@@ -136,8 +156,9 @@ async def refresh_aliases(provider: AliasProvider, client: httpx.AsyncClient) ->
         # An empty answer would silently switch nickname search off.
         log.warning("aliases_fetch_empty", teams=len(teams))
         return False
+    merged = merge_teams(provider.fallback.teams, teams)
     # Thai aliases go through the tokenizer: CPU work, kept off the event loop.
-    provider.replace(await asyncio.to_thread(AliasIndex, teams))
+    provider.replace(await asyncio.to_thread(AliasIndex, merged))
     log.info("aliases_refreshed", teams=len(teams))
     return True
 

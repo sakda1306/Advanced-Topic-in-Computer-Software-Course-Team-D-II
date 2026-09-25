@@ -8,15 +8,21 @@ both unchanged. A delete follows the same order.
 A rebuild re-chunks and re-embeds stored documents in two steps, so writes do not wait
 for the slow part: it embeds everything without the lock, then takes the lock, re-reads
 the store and embeds only the text that changed in the meantime before swapping.
+
+Once a write has started it runs to the end even if its caller is cancelled (shutdown,
+a dropped request): the worker thread cannot be stopped halfway, so stopping only the
+coroutine could leave SQLite written and the snapshot not swapped. `drain()` waits for
+such writes; the app calls it before closing the store.
 """
 
 from __future__ import annotations
 
 import asyncio
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from typing import TypeVar
 
 import numpy as np
 
@@ -30,6 +36,8 @@ from app.search.snapshot import IndexedChunk, Snapshot
 from app.search.tokenize import tokenize
 
 log = get_logger(__name__)
+
+T = TypeVar("T")
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,24 +90,45 @@ class IndexService:
         self._clock = clock
         self._lock = asyncio.Lock()
         self._snapshot: Snapshot | None = None
+        self._running: set[asyncio.Task[object]] = set()
 
     @property
     def snapshot(self) -> Snapshot | None:
         return self._snapshot
 
+    async def drain(self) -> None:
+        """Wait for loads and writes already started; call before closing the store."""
+        while self._running:
+            await asyncio.gather(*self._running, return_exceptions=True)
+
+    async def _to_the_end(self, work: Awaitable[T]) -> T:
+        task: asyncio.Task[T] = asyncio.ensure_future(work)
+        self._running.add(task)  # type: ignore[arg-type]
+        task.add_done_callback(self._running.discard)  # type: ignore[arg-type]
+        return await asyncio.shield(task)
+
     async def load(self) -> None:
+        await self._to_the_end(self._load())
+
+    async def upsert(self, documents: Sequence[Document]) -> UpsertResult:
+        return await self._to_the_end(self._upsert(documents))
+
+    async def delete(self, doc_id: str) -> bool:
+        """Remove a document; False, with nothing changed, when it is not in the index."""
+        return await self._to_the_end(self._delete(doc_id))
+
+    async def _load(self) -> None:
         async with self._lock:
             self._snapshot = await asyncio.to_thread(self._load_sync)
 
-    async def upsert(self, documents: Sequence[Document]) -> UpsertResult:
+    async def _upsert(self, documents: Sequence[Document]) -> UpsertResult:
         async with self._lock:
             current = self._snapshot or await asyncio.to_thread(self._load_sync)
             snapshot, result = await asyncio.to_thread(self._upsert_sync, current, documents)
             self._snapshot = snapshot
             return result
 
-    async def delete(self, doc_id: str) -> bool:
-        """Remove a document; False, with nothing changed, when it is not in the index."""
+    async def _delete(self, doc_id: str) -> bool:
         async with self._lock:
             current = self._snapshot or await asyncio.to_thread(self._load_sync)
             snapshot = await asyncio.to_thread(self._delete_sync, current, doc_id)

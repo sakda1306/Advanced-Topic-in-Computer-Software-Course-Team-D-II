@@ -113,6 +113,8 @@ services/05_retrieval_knowledge/
 - ตรวจ: `category` / `origin` อยู่ใน enum · `doc_id` ตรงรูปแบบของ category ตามตาราง §6 · `text` ไม่ว่าง · ≤ 100 เอกสารต่อคำขอ · ผิด → 422 ทั้งคำขอ
 - ทำทั้งคำขอเป็นก้อนเดียวใต้ lock: `content_hash` ไม่เปลี่ยน → ข้าม · ตัด chunk + embed เอกสารที่เปลี่ยน และสร้าง snapshot ใหม่ **ก่อนเขียน** → SQLite transaction เดียว (แทน chunk เดิมของ doc_id นั้นทั้งหมด) → สลับ snapshot → `index_version` = เวลาปัจจุบัน (+07:00)
 - ขั้นไหนล้ม → 500 และไม่มีอะไรเปลี่ยน ทั้ง SQLite และ snapshot ที่ใช้ค้นอยู่
+- index ยังโหลดไม่เสร็จ → 503 `INDEX_NOT_READY` (ใช้กับ DELETE ด้วย) · ไม่รอ lock ของการโหลด เพราะโหลดอาจนานกว่า timeout 30 s ของ 07 · 07 ถือเป็น job ล้มแล้ว retry
+- เริ่มเขียนแล้วทำจนจบแม้ผู้เรียกถูกยกเลิก: thread ที่เขียน SQLite หยุดกลางทางไม่ได้ ถ้าหยุดแค่ coroutine SQLite จะถูกเขียนแต่ snapshot ไม่ถูกสลับ · ตอนปิด service `drain()` รองานเหล่านี้ก่อนปิด SQLite
 - ตอบ `{request_id, upserted, chunks, index_version}` · `upserted` = จำนวนเอกสารที่รับ (รวมที่ไม่เปลี่ยน) · ไม่มีอะไรเปลี่ยน → `index_version` เดิม
 
 ### `DELETE /index/{doc_id}` → `{deleted: true | false}` (200) · ใช้ lock เดียวกัน
@@ -138,6 +140,7 @@ services/05_retrieval_knowledge/
 - task เบื้องหลังใน lifespan ดึง `GET /football/teams` ของ 07 ทุก `ALIASES_CACHE_SECONDS` (3600) · timeout 3 วินาที · ดึงไม่ได้ลองใหม่ใน `ALIASES_RETRY_SECONDS` (60)
 - `/search` อ่านชุดชื่อเล่นปัจจุบันเสมอ **ไม่เคยรอ 07** แม้ตอน cache หมดอายุ (เดิมออกแบบให้ `/search` เรียก 07 เองแล้วพัก 60 วินาทีเมื่อล้ม — เปลี่ยนเพราะแบบนี้ไม่มีคำขอไหนช้าเพราะ 07 และไม่ต้องมี circuit breaker)
 - ก่อน 07 ตอบ ใช้ `data/team_aliases.json` · 07 ล่ม / ตอบรูปแบบผิด / ไม่มี alias เลย → ใช้ชุดเดิมต่อ ไม่ทับด้วยชุดว่าง
+- ชุดของ 07 **รวม** กับไฟล์สำรองตาม `team_id` ไม่ใช่แทนทั้งชุด: ชื่อทางการใช้ของ 07 · ชื่อเล่นเก็บทั้งสองแหล่ง · ทีมที่มีแค่ในไฟล์สำรองยังอยู่ (รีวิว #8: 07 มีชื่อเล่นไทยแค่ 8 ทีม)
 - `FOOTBALL_DATA_URL` ว่าง = ไม่ดึง ใช้ไฟล์สำรองอย่างเดียว (เทสและ CI)
 
 ### health
