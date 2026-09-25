@@ -32,3 +32,15 @@ def test_fake_embedder_is_normalised_and_deterministic() -> None:
     np.testing.assert_array_equal(a, b)
     assert float(a @ c) < 0.5
     assert embedder.calls == [["Arsenal beat Chelsea", "Arsenal beat Chelsea", "Spain"]]
+
+
+def test_accented_latin_letters_are_folded_not_dropped() -> None:
+    # The router's English rewrite usually has no accents; the knowledge base often does.
+    assert tokenize("Petr Čech Müller Ødegaard Mbappé Straße") == [
+        "petr",
+        "cech",
+        "muller",
+        "odegaard",
+        "mbappe",
+        "strasse",
+    ]

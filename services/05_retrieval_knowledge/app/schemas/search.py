@@ -52,12 +52,21 @@ class SearchFiltersIn(BaseModel):
 
 
 class SearchRequest(BaseModel):
+    # A mistyped key (e.g. "filter") would otherwise return unfiltered results.
+    model_config = ConfigDict(extra="forbid")
+
     request_id: str | None = Field(default=None, max_length=64)
     query: Text = Field(max_length=1000)
     query_original: Text | None = Field(default=None, max_length=1000)
     top_k: int = Field(default=5, ge=1, le=20)
     filters: SearchFiltersIn = Field(default_factory=SearchFiltersIn)
     mode: Mode = "hybrid"
+
+    @field_validator("filters", mode="before")
+    @classmethod
+    def _null_means_no_filter(cls, value: object) -> object:
+        # Optional in CONTRACT §4; callers that dump None send `"filters": null`.
+        return {} if value is None else value
 
     @field_validator("query")
     @classmethod

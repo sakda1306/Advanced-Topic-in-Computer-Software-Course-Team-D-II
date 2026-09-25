@@ -128,3 +128,16 @@ async def test_every_mode_answers(client: httpx.AsyncClient, mode: str) -> None:
 )
 async def test_invalid_requests_are_422(client: httpx.AsyncClient, body: dict[str, Any]) -> None:
     assert_problem(await client.post("/search", json=body), 422, "VALIDATION_ERROR")
+
+
+async def test_null_filters_mean_no_filter(client: httpx.AsyncClient) -> None:
+    # A caller that dumps an optional model without dropping None sends "filters": null.
+    response = await search(client, query="Arsenal Chelsea", filters=None)
+    assert response.status_code == 200
+    assert response.json()["chunks"]
+
+
+async def test_unknown_top_level_key_is_422(client: httpx.AsyncClient) -> None:
+    # "filter" instead of "filters" must not return unfiltered results.
+    response = await search(client, query="Arsenal", filter={"category": ["standings"]})
+    assert_problem(response, 422, "VALIDATION_ERROR")
