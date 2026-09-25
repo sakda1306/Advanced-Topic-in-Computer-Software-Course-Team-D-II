@@ -7,6 +7,9 @@ from functools import lru_cache
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Best in eval/results/retrieval.json on the laptop it was measured on (README).
+RECOMMENDED_RERANK_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -20,9 +23,16 @@ class Settings(BaseSettings):
     kb_db_path: str = "/data/kb.sqlite"
     trivia_file: str = "data/football_trivia_qa.txt"
     aliases_file: str = "data/team_aliases.json"
+    # Nicknames from 07 (CONTRACT §7); empty = use the bundled file only.
+    football_data_url: str = "http://football-data:8000"
+    aliases_cache_seconds: float = 3600
+    aliases_retry_seconds: float = 60
+    aliases_timeout_seconds: float = 3
 
     embedding_model: str = "paraphrase-multilingual-MiniLM-L12-v2"
-    # Empty = no reranking; rerank_score stays null (CONTRACT §4).
+    # Empty = no reranking; rerank_score stays null (CONTRACT §4). Off until it is measured
+    # on 07's real documents, the router's real rewrites and the deploy machine (review of
+    # #10); the eval recommends RECOMMENDED_RERANK_MODEL, set through RERANK_MODEL.
     rerank_model: str = ""
     # 0 = off. MiniLM gives Thai/English pairs low cosine, so a cut-off comes from eval.
     min_vector_score: float = 0.0

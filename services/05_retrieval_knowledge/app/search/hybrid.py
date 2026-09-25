@@ -1,7 +1,9 @@
 """Hybrid search (CONTRACT §4): BM25 + vector, fused with Reciprocal Rank Fusion.
 
 - BM25 reads `query` (the router's English rewrite) plus official names of nicknamed teams
-- the vector side reads `query_original` (multilingual model), falling back to `query`
+- the vector side reads `query` too: the Thai original matched English documents worse
+  (eval, match set: hybrid hit@1 0.70 with it, 0.90 without); `query_original` is only
+  searched for team nicknames
 - hybrid `score` = RRF (k = 60); single modes return that method's raw score
 - with a reranker, the fused candidates are re-ordered by `rerank_score`
 05 never relaxes filters: the fallback order belongs to the router (CONTRACT §3).
@@ -14,7 +16,7 @@ from dataclasses import dataclass, replace
 from typing import Literal
 
 from app.core.logging import get_logger
-from app.search.aliases import AliasIndex
+from app.search.aliases import AliasIndex, AliasProvider
 from app.search.embedder import Embedder
 from app.search.reranker import Reranker
 from app.search.snapshot import SearchFilters, Snapshot
@@ -46,7 +48,7 @@ class Searcher:
     def __init__(
         self,
         embedder: Embedder,
-        aliases: AliasIndex,
+        aliases: AliasIndex | AliasProvider,
         *,
         reranker: Reranker | None,
         candidate_k: int,
@@ -81,7 +83,7 @@ class Searcher:
             tokens = tokenize(" ".join([query, *names]))
             bm25_hits = snapshot.bm25_top(tokens, allowed, self._candidate_k)
         if mode in ("hybrid", "vector"):
-            vector = self._embedder.encode([query_original or query])[0]
+            vector = self._embedder.encode([query])[0]
             vector_hits = snapshot.vector_top(
                 vector, allowed, self._candidate_k, self._min_vector_score
             )

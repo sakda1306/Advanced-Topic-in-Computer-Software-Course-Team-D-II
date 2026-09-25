@@ -23,7 +23,7 @@
 |---|---|---|
 | ที่เก็บ index | SQLite เป็นแหล่งจริง + snapshot (FAISS + BM25) ในหน่วยความจำ สลับทีเดียว | BM25 กับ FAISS สร้างจากชุด chunk เดียวกันเสมอ จึงตรงกันโดยโครงสร้าง (§6) · ล่มกลางทางไม่เหลือไฟล์ครึ่ง ๆ · restart ไม่ต้อง embed ใหม่ |
 | ชื่อเล่นทีม | ดึง `GET /football/teams` ของ 07 + cache 1 ชม. + ไฟล์สำรองใน 05 | แหล่งเดียวกับ router · ต้องแก้ CONTRACT §7 เพิ่ม retrieval เป็นผู้เรียก |
-| reranker | มีแต่ปิดเป็นค่าเริ่มต้น (`RERANK_MODEL` ว่าง) · eval วัดก่อนเปิด | แผนจัดเป็น Could · cross-encoder บน CPU ช้า ต้องมีตัวเลขยืนยัน |
+| reranker | **ปิดเป็นค่าเริ่มต้น** (`RERANK_MODEL` ว่าง) · แนะนำ `cross-encoder/ms-marco-MiniLM-L-6-v2` | eval PR ③: ms-marco hit@1 ต่ำสุด 0.939 ที่ p95 สูงสุด 613.7 ms ใน process บนโน้ตบุ๊ก · รีวิว #10: ตัวเลขมาจากเอกสารจำลองและเครื่องที่ไม่ใช่เครื่อง deploy จึงเปิดผ่าน env หลังวัดซ้ำ · bge-reranker-v2-m3 p95 ~14 s เกิน timeout 10 s |
 | multi_query | ไม่ทำ | router เขียนคำถามใหม่ 1 แบบอยู่แล้ว + 05 ค้นสองภาษา + ขยายชื่อเล่น · ไม่เพิ่มฟิลด์ใน §4 |
 
 ---
@@ -98,7 +98,7 @@ services/05_retrieval_knowledge/
 1. **ขยายคำค้นด้วยชื่อเล่น (week5 #1)** — หาชื่อเล่นใน `query` และ `query_original` แล้วต่อชื่อทางการท้ายคำค้นฝั่ง BM25 · จับชื่อยาวสุดก่อน · ชื่ออังกฤษต้องตรงทั้งคำ · ชื่อไทยต้องตรงกับลำดับคำที่ตัดด้วย pythainlp ทั้งคำ ("ผี" ต้องไม่จับ "ผีเสื้อ" · "แมนยู" ถูกตัดเป็น แมน|ยู ทั้งใน alias และในประโยค จึงยังจับได้) · ไม่เพิ่ม `team_ids` ใน filter เอง
 2. **กรอง metadata ก่อนค้น** — `category` อยู่ในรายการ · `season` / `matchweek` ตรง · `team_ids` มีตัวใดตัวหนึ่งตรง · `date_from` / `date_to` เทียบกับ `date` (เอกสารไม่มีวันที่ถูกตัดเมื่อมี filter วันที่) · ไม่เหลือ chunk → `200` + `chunks: []` · **05 ไม่ผ่อน filter เอง** (ลำดับถอยเป็นของ router §3)
 3. **BM25** (hybrid, bm25) — คำค้นที่ขยายแล้ว · คะแนนเฉพาะ chunk ที่ผ่าน filter · เก็บ `CANDIDATE_K` อันดับที่คะแนน > 0
-4. **vector** (hybrid, vector) — embed `query_original` · FAISS ผ่าน `IDSelectorBatch` เฉพาะ chunk ที่ผ่าน filter · เก็บ `CANDIDATE_K` อันดับ (ตัดที่ `vector_score < MIN_VECTOR_SCORE` เมื่อค่ามากกว่า 0)
+4. **vector** (hybrid, vector) — embed `query` (คำถามที่ router เขียนใหม่เป็นอังกฤษ) — เดิม embed `query_original` แต่ eval PR ③ พบว่าภาษาไทยทำชุด match hit@1 ตก (hybrid 0.70 → 0.90 เมื่อใช้ `query` · trivia เท่าเดิม) · FAISS ผ่าน `IDSelectorBatch` เฉพาะ chunk ที่ผ่าน filter · เก็บ `CANDIDATE_K` อันดับ (ตัดที่ `vector_score < MIN_VECTOR_SCORE` เมื่อค่ามากกว่า 0)
 5. **รวม** — hybrid: `score` = RRF (`RRF_K` = 60) · โหมดเดี่ยว: `score` = คะแนนดิบของวิธีนั้น · เรียงมาก → น้อย
 6. **rerank** (เมื่อตั้ง `RERANK_MODEL`) — ให้คะแนนผู้เข้ารอบ `CANDIDATE_K` อันดับด้วย `query` · ใส่ `rerank_score` แล้วเรียงตามนั้น · โหลดไม่ได้หรือล้ม → ใช้ผลข้อ 5 ต่อและเขียน log
 7. **ตอบ** — ตัดเหลือ `top_k` · แต่ละ chunk: `chunk_id`, `text`, `score`, `bm25_score`, `vector_score` (null ถ้าวิธีนั้นไม่เจอ), `rerank_score`, `source` (Source ตาม §0 · `ref` = ลำดับ 1..n) · พร้อม `request_id`, `latency_ms`, `index_version`
@@ -111,18 +111,24 @@ services/05_retrieval_knowledge/
 
 ### `POST /index/upsert`
 - ตรวจ: `category` / `origin` อยู่ใน enum · `doc_id` ตรงรูปแบบของ category ตามตาราง §6 · `text` ไม่ว่าง · ≤ 100 เอกสารต่อคำขอ · ผิด → 422 ทั้งคำขอ
-- ทำทั้งคำขอเป็นก้อนเดียวใต้ lock: `content_hash` ไม่เปลี่ยน → ข้าม · ตัด chunk + embed เอกสารที่เปลี่ยน **ก่อนเขียน** → SQLite transaction เดียว (แทน chunk เดิมของ doc_id นั้นทั้งหมด) → สร้าง snapshot ใหม่ → สลับ → `index_version` = เวลาปัจจุบัน (+07:00)
+- ทำทั้งคำขอเป็นก้อนเดียวใต้ lock: `content_hash` ไม่เปลี่ยน → ข้าม · ตัด chunk + embed เอกสารที่เปลี่ยน และสร้าง snapshot ใหม่ **ก่อนเขียน** → SQLite transaction เดียว (แทน chunk เดิมของ doc_id นั้นทั้งหมด) → สลับ snapshot → `index_version` = เวลาปัจจุบัน (+07:00)
 - ขั้นไหนล้ม → 500 และไม่มีอะไรเปลี่ยน ทั้ง SQLite และ snapshot ที่ใช้ค้นอยู่
+- index ยังโหลดไม่เสร็จ → 503 `INDEX_NOT_READY` (ใช้กับ DELETE ด้วย) · ไม่รอ lock ของการโหลด เพราะโหลดอาจนานกว่า timeout 30 s ของ 07 · 07 ถือเป็น job ล้มแล้ว retry
+- เริ่มเขียนแล้วทำจนจบแม้ผู้เรียกถูกยกเลิก: thread ที่เขียน SQLite หยุดกลางทางไม่ได้ ถ้าหยุดแค่ coroutine SQLite จะถูกเขียนแต่ snapshot ไม่ถูกสลับ · ตอนปิด service `drain()` รองานเหล่านี้ก่อนปิด SQLite
 - ตอบ `{request_id, upserted, chunks, index_version}` · `upserted` = จำนวนเอกสารที่รับ (รวมที่ไม่เปลี่ยน) · ไม่มีอะไรเปลี่ยน → `index_version` เดิม
 
 ### `DELETE /index/{doc_id}` → `{deleted: true | false}` (200) · ใช้ lock เดียวกัน
+- ลำดับเดียวกับ upsert: สร้าง snapshot ที่ไม่มีเอกสารนั้นก่อน → ลบใน SQLite transaction เดียว → สลับ · ไม่มีเอกสาร → `false` และ `index_version` เดิม
 
 ### `GET /index/stats` → `{documents, chunks, by_category, index_version}`
+- นับจาก snapshot (ตรงกับ SQLite โดยโครงสร้าง) · `by_category` = จำนวน**เอกสาร**ต่อ category · index ยังไม่พร้อม → 503 `INDEX_NOT_READY`
 
 ### `POST /index/rebuild` + `GET /index/jobs/{job_id}`
 - รับ `{request_id, category?}` → `202 {job_id}` · ทำใน background: ตัด chunk + embed ใหม่จากข้อความใน SQLite แล้วสลับทีเดียว · ระหว่างนั้น `/search` ใช้ index เดิม
+- สองขั้นเพื่อไม่ให้ upsert / delete ของ 07 ต้องรอ: **ขั้น 1 ไม่ถือ lock** อ่านเอกสาร ตัด chunk และ embed ทั้งชุด (ส่วนที่ช้า) · **ขั้น 2 ถือ lock** อ่าน SQLite อีกรอบ embed เฉพาะข้อความที่เปลี่ยนระหว่างขั้น 1 → สร้าง snapshot → เขียน SQLite transaction เดียว → สลับ · เอกสารที่ถูก upsert / ลบระหว่างขั้น 1 จึงไม่หายและไม่กลับมา · คลังจริงใช้ราว 24 วินาที
+- `status`: `queued | running | done | failed` ตาม `Job` ใน CONTRACT §1.1 · `detail` = สรุปจำนวนเมื่อสำเร็จ หรือชนิดของ error เมื่อล้ม (ไม่เปิดเผยรายละเอียดภายใน) · shutdown ระหว่างขั้น 1 (embed) → `failed` / `cancelled` และ index ไม่เปลี่ยน · ถ้าถึงขั้น 2 (ถือ lock เขียน SQLite) แล้ว ขั้นนี้ทำจนจบและสลับ snapshot ก่อนปิด SQLite (รีวิว #9: thread หยุดกลางทางไม่ได้)
 - สั่งซ้ำขณะรันอยู่ → 409 `JOB_ALREADY_RUNNING`
-- job อยู่ในหน่วยความจำ 50 รายการล่าสุด: `{job_id, status, started_at, finished_at, detail}` · restart แล้วหาย
+- job อยู่ในหน่วยความจำ 50 รายการล่าสุด: `{job_id, status, started_at, finished_at, detail}` · **restart แล้วหาย → `GET /index/jobs/{job_id}` ได้ 404** หน้า admin ให้ถือว่างานนั้นจบไม่แน่ชัด แล้วสั่ง rebuild ใหม่ได้ ไม่มีอะไรเสียหาย เพราะ rebuild ที่ไม่จบไม่เปลี่ยน index · เลือกไม่เก็บลง SQLite เพราะ rebuild เป็นระดับ Could (ตัดสินหลังรีวิว #9)
 
 ### snapshot
 - ก้อนที่ไม่ถูกแก้หลังสร้าง: FAISS (`IndexIDMap2` + `IndexFlatIP`) · BM25 · metadata ของ chunk · `index_version`
@@ -131,8 +137,11 @@ services/05_retrieval_knowledge/
 - ไม่เขียน snapshot ลงดิสก์ — ตอนเริ่มระบบสร้างจาก SQLite (embedding ที่เก็บไว้)
 
 ### ชื่อเล่นทีม
-- `GET /football/teams` ของ 07 · timeout 3 วินาที · cache `ALIASES_CACHE_SECONDS` (3600)
-- ดึงไม่ได้ → `data/team_aliases.json` · พักไม่เรียก 07 เป็นเวลา 60 วินาที ไม่ให้ `/search` ช้า
+- task เบื้องหลังใน lifespan ดึง `GET /football/teams` ของ 07 ทุก `ALIASES_CACHE_SECONDS` (3600) · timeout 3 วินาที · ดึงไม่ได้ลองใหม่ใน `ALIASES_RETRY_SECONDS` (60)
+- `/search` อ่านชุดชื่อเล่นปัจจุบันเสมอ **ไม่เคยรอ 07** แม้ตอน cache หมดอายุ (เดิมออกแบบให้ `/search` เรียก 07 เองแล้วพัก 60 วินาทีเมื่อล้ม — เปลี่ยนเพราะแบบนี้ไม่มีคำขอไหนช้าเพราะ 07 และไม่ต้องมี circuit breaker)
+- ก่อน 07 ตอบ ใช้ `data/team_aliases.json` · 07 ล่ม / ตอบรูปแบบผิด / ไม่มี alias เลย → ใช้ชุดเดิมต่อ ไม่ทับด้วยชุดว่าง
+- ชุดของ 07 **รวม** กับไฟล์สำรองตาม `team_id` ไม่ใช่แทนทั้งชุด: ชื่อทางการใช้ของ 07 · ชื่อเล่นเก็บทั้งสองแหล่ง · ทีมที่มีแค่ในไฟล์สำรองยังอยู่ (รีวิว #8: 07 มีชื่อเล่นไทยแค่ 8 ทีม)
+- `FOOTBALL_DATA_URL` ว่าง = ไม่ดึง ใช้ไฟล์สำรองอย่างเดียว (เทสและ CI)
 
 ### health
 - `GET /health` → 200 ตาม §0 เสมอ
@@ -157,11 +166,11 @@ services/05_retrieval_knowledge/
 | `TRIVIA_FILE` | `data/football_trivia_qa.txt` | |
 | `EMBEDDING_MODEL` | `paraphrase-multilingual-MiniLM-L12-v2` | เปลี่ยน = embed ใหม่ทั้งหมดตอนเริ่ม |
 | `HF_HOME` | `/models` | cache โมเดล อยู่ใน volume |
-| `RERANK_MODEL` | ว่าง | ว่าง = ปิด |
+| `RERANK_MODEL` | ว่าง | ว่าง = ปิด · แนะนำ `cross-encoder/ms-marco-MiniLM-L-6-v2` (อังกฤษ ให้คะแนนด้วย `query` · ~90 MB cache ใน `HF_HOME`) |
 | `MIN_VECTOR_SCORE` | `0.0` | 0 = ปิด · MiniLM ให้ cosine ไทย-อังกฤษต่ำ (ราว 0.26) ค่าจริงมาจาก eval |
 | `CANDIDATE_K` / `RRF_K` | `20` / `60` | |
 | `FOOTBALL_DATA_URL` | `http://football-data:8000` | ใช้ดึงชื่อเล่นทีม |
-| `ALIASES_CACHE_SECONDS` | `3600` | |
+| `ALIASES_CACHE_SECONDS` · `ALIASES_RETRY_SECONDS` · `ALIASES_TIMEOUT_SECONDS` | `3600` · `60` · `3` | ว่าง `FOOTBALL_DATA_URL` = ไม่ดึงจาก 07 |
 | `GIT_SHA` / `LOG_LEVEL` | `0.1.0` / `INFO` | |
 
 ---
@@ -183,6 +192,12 @@ services/05_retrieval_knowledge/
 - คำถามนอกคลัง 10 ข้อ สำหรับปรับ `MIN_VECTOR_SCORE` ให้ได้ `chunks: []` เมื่อควร
 - ตัวชี้วัด: hit@1 · hit@5 · MRR · latency p50 / p95 · เทียบ bm25 / vector / hybrid / hybrid+rerank (bge-reranker-v2-m3 และ ms-marco-MiniLM-L-6-v2)
 - ผลออกเป็น JSON (member6 ใช้ทำ `eval/report.html`) + ตารางใน README
+- **ผล (PR ③)** อยู่ใน README ของ 05 · สรุปการตัดสินใจจากตัวเลข:
+  - `MIN_VECTOR_SCORE` = **0.0** ต่อไป: hybrid ไม่ได้ `chunks: []` กับคำถามนอกคลังที่ทุกค่า (BM25 เจอคำร่วมเสมอ) ค่าที่สูงขึ้นจึงไม่เปลี่ยนสิ่งที่ router ได้รับ → คำถามนอกคลังเป็นหน้าที่ของ router / generation
+  - reranker: ms-marco-MiniLM-L-6-v2 ได้ hit@1 ต่ำสุด 0.939 ที่ p95 สูงสุด 613.7 ms (ใน process โมเดลอุ่นแล้ว ไม่รวม HTTP) · bge-reranker-v2-m3 p95 ~14 s เกิน timeout 10 s ใช้บน CPU ไม่ได้ · **ปิดเป็นค่าเริ่มต้น** (รีวิว #10) เปิดผ่าน `RERANK_MODEL` หลังวัดกับเอกสาร 07 จริง คำ rewrite ของ router จริง และเครื่อง deploy
+  - คำถามที่ตอบไม่ได้: retrieval ไม่ว่างเองถ้า filter ยังเหลือเอกสาร · top `rerank_score` ของ ms-marco ≥ 4 แยกได้ (ปฏิเสธคำถามที่ตอบได้ 0.4% · ปล่อยคำถามที่ตอบไม่ได้ 0%) เสนอเป็นจุดตั้งต้นให้ router / generation — ชุดที่ตอบไม่ได้มีแค่ 20 ข้อ
+  - ฝั่ง vector เปลี่ยนไป embed `query` แทน `query_original`: ชุด match hybrid hit@1 0.70 → 0.90 · MRR 0.82 → 0.95 · trivia เท่าเดิม · embed ทั้งสองแล้วรวม RRF ทำ trivia ตกเล็กน้อย จึงไม่ใช้ · ข้อควรรู้: คำอังกฤษใน golden เขียนมาดี ถ้า router แปลแย่ ผลจริงจะต่ำกว่านี้
+  - `live_docs.json` เป็นข้อมูล**จำลอง** แทนด้วยเอกสารจริงจาก 07 เมื่อมี แล้วรันใหม่
 
 ---
 
@@ -191,13 +206,14 @@ services/05_retrieval_knowledge/
 | PR | เนื้อหา | ปลดล็อก | วัน |
 |---|---|---|---|
 | ① | โครง service · SQLite · ingest trivia · snapshot · `/search` ครบทุกโหมด + filter + ชื่อเล่นจากไฟล์ + rerank flag · `/health` · `/ready` · เทส · CI | 03, 06 | D3 |
-| ② | `/index/upsert` · `DELETE /index/{doc_id}` · `/index/stats` · `/index/rebuild` · `/index/jobs/{job_id}` · ดึงชื่อเล่นจาก 07 | 07 | D4 |
+| ②a | `/index/upsert` · `DELETE /index/{doc_id}` · `/index/stats` · ดึงชื่อเล่นจาก 07 | 07 | D4 |
+| ②b | `/index/rebuild` · `/index/jobs/{job_id}` (Could) | 02 หน้า admin | D4 |
 | ③ | golden sets · eval script · ตัวเลขใน README | – | D5 |
-| CONTRACT (แยก) | §7 เพิ่ม retrieval เป็นผู้เรียก `GET /football/teams` · §4 / §6 เพิ่ม `INDEX_NOT_READY` (503) | – | ก่อน PR ② |
+| CONTRACT (แยก) | §7 เพิ่ม retrieval เป็นผู้เรียก `GET /football/teams` · §4 / §6 เพิ่ม `INDEX_NOT_READY` (503) | – | คู่กับ PR ②a |
 
 ทุก PR เข้า `develop` ให้ member6 รีวิว (GIT_FLOW §2)
 
-**ส่งต่อ member6** (เจ้าของ Dockerfile / compose): worker เดียว · volume `/data` และ `HF_HOME` · healthcheck `GET /ready` พร้อม `start_period` พอสำหรับโหลดโมเดล · ดาวน์โหลดโมเดลตอน build image ได้ถ้าต้องการให้เริ่มเร็ว
+**ส่งต่อ member6** (เจ้าของ Dockerfile / compose): worker เดียว · volume `/data` และ `HF_HOME` · healthcheck `GET /ready` พร้อม `start_period` พอสำหรับโหลดโมเดล · ดาวน์โหลดโมเดลตอน build image ได้ถ้าต้องการให้เริ่มเร็ว · มีสองโมเดล: embedding (`EMBEDDING_MODEL`) และ reranker (`RERANK_MODEL`, ms-marco ~90 MB)
 
 **ความเสี่ยง**
 - image ใหญ่ (torch CPU + โมเดล) → ใช้ torch แบบ CPU-only และ cache โมเดลใน volume

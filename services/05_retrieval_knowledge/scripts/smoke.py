@@ -2,7 +2,8 @@
 
     RETRIEVAL_URL=http://localhost:8000 python scripts/smoke.py
 
-Waits for /ready, then checks the CONTRACT §4 shape on the real knowledge base.
+Waits for /ready, then checks the CONTRACT §4 shape on the real knowledge base, and the
+§6 index round trip (upsert -> search -> rebuild -> delete) with a document it removes again.
 Exits 1 on the first failed check.
 """
 
@@ -19,6 +20,17 @@ URL = os.environ.get("RETRIEVAL_URL", "http://localhost:8000")
 FIRST_QUESTION = (
     "It is alleged that this country 'sold out' to Argentina in a 1978 World Cup Group 2 game."
 )
+SMOKE_DOC = {
+    "doc_id": "match-2026-mw38-9001-9002",
+    "title": "Smoke Rovers 7-3 Probe Albion",
+    "text": "Smoke Rovers 7-3 Probe Albion. Zyxwv scored four goals at Checkpoint Park.",
+    "category": "match_report",
+    "origin": "api-football",
+    "season": "2026",
+    "matchweek": 38,
+    "team_ids": [9001, 9002],
+    "date": "2026-09-25",
+}
 
 
 def check(name: str, ok: bool, response: httpx.Response | None = None) -> None:
@@ -71,7 +83,50 @@ def main() -> None:
         response.status_code == 422 and response.json().get("service") == "retrieval",
         response,
     )
+
+    index_round_trip(client)
     print("smoke passed")
+
+
+def found(client: httpx.Client, query: str) -> list[str]:
+    response = search(client, query=query, mode="bm25", top_k=20)
+    return [c["source"]["doc_id"] for c in response.json().get("chunks", [])]
+
+
+def wait_job(client: httpx.Client, job_id: str, seconds: int = 120) -> dict[str, Any]:
+    deadline = time.monotonic() + seconds
+    while True:
+        job: dict[str, Any] = client.get(f"/index/jobs/{job_id}").json()
+        if job.get("status") in ("done", "failed") or time.monotonic() > deadline:
+            return job
+        time.sleep(1)
+
+
+def index_round_trip(client: httpx.Client) -> None:
+    doc_id = SMOKE_DOC["doc_id"]
+    client.delete(f"/index/{doc_id}")  # left over from an interrupted run
+    before = client.get("/index/stats").json()
+
+    response = client.post("/index/upsert", json={"documents": [SMOKE_DOC]})
+    check("POST /index/upsert", response.status_code == 200 and response.json()["upserted"] == 1)
+    check("the upserted document is found", doc_id in found(client, "Zyxwv Checkpoint Park"))
+    stats = client.get("/index/stats").json()
+    check("GET /index/stats counts it", stats["documents"] == before["documents"] + 1)
+
+    response = client.post("/index/rebuild", json={"category": "match_report"})
+    check("POST /index/rebuild -> 202", response.status_code == 202, response)
+    job = wait_job(client, response.json()["job_id"])
+    check("the rebuild job is done", job.get("status") == "done")
+    check("still found after the rebuild", doc_id in found(client, "Zyxwv Checkpoint Park"))
+
+    response = client.delete(f"/index/{doc_id}")
+    check("DELETE /index/{doc_id}", response.json() == {"deleted": True}, response)
+    check("the deleted document is gone", doc_id not in found(client, "Zyxwv Checkpoint Park"))
+    response = client.delete(f"/index/{doc_id}")
+    check("deleting again -> deleted false", response.json() == {"deleted": False}, response)
+    after = client.get("/index/stats").json()
+    check("stats are back", after["documents"] == before["documents"])
+    check("stats by category are back", after["by_category"] == before["by_category"])
 
 
 if __name__ == "__main__":
