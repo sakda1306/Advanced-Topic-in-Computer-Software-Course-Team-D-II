@@ -1,4 +1,4 @@
-# CONTRACT.md — ข้อตกลง API ระหว่าง service · ผู้ช่วยฟุตบอล · v1.1
+# CONTRACT.md — ข้อตกลง API ระหว่าง service · ผู้ช่วยฟุตบอล · v1.2
 
 > **กฎเหล็ก**: แก้ไฟล์นี้ได้ผ่าน PR เท่านั้น ต้องได้ approve จากหัวหน้า (sakda1306) + เจ้าของ service ทั้งสองฝั่งที่เกี่ยวข้อง
 > เพิ่ม field ใหม่แบบ optional ได้ (ไม่ทำให้คนอื่นพัง) แต่ **ห้ามลบ / เปลี่ยนชื่อ / เปลี่ยนความหมาย field** โดยไม่ bump version และแจ้งในกลุ่ม
@@ -371,6 +371,10 @@ auth ใช้ httpOnly cookie ชื่อ `access_token` (JWT HS256, อาย
 - ไม่เจออะไรเลย → `200` + `chunks: []` (ไม่ใช่ 404)
 - ข้อมูลแมตช์ที่ `category` เดียวกันและ `doc_id` เดียวกัน จะมีได้แค่เวอร์ชันล่าสุดเวอร์ชันเดียวใน index เสมอ
 
+| code | status | เมื่อไร |
+|---|---|---|
+| `INDEX_NOT_READY` | 503 | index ยังโหลดไม่เสร็จตอน retrieval เริ่มระบบ · ใช้กับ `/search` (§4) และ `/index/stats` (§6) · router ถือเป็น retrieval ล่ม แล้วถอยตามลำดับของเส้น `football_rag` (§3) |
+
 ## 5. router / football-data → generation
 
 ### `POST /generate`
@@ -468,6 +472,8 @@ body `{request_id, category?}` (ไม่ใส่ = ทั้งหมด) → 
 - 05 ตัด chunk: `trivia` = 1 คู่ถาม-ตอบ ต่อ 1 chunk · อื่น ๆ = ตามหัวข้อ (`## `) ไม่ตัดตามจำนวนตัวอักษร
 - upsert ต้องอัปเดตทั้ง BM25 และ FAISS ให้ตรงกัน ก่อนเปลี่ยน `index_version`
 - **ข้อความใน `text` เป็นภาษาอังกฤษ** (ให้ตรงกับคลัง trivia) — ชื่อเล่นภาษาไทยจัดการด้วย alias ที่ฝั่ง query
+- ขอบเขตของ upsert: 1–100 เอกสารต่อคำขอ · body ≤ 5 MB (เกิน → 413) · field ผิด / `doc_id` ไม่ตรงรูปแบบของ category → 422 ทั้งคำขอ · ล้มกลางทาง → 500 และ index ไม่เปลี่ยนเลย
+- `INDEX_NOT_READY` (503) ใช้กับ `GET /index/stats` ด้วย (ดูตารางใน §4)
 
 ## 7. api → football-data
 
@@ -478,7 +484,7 @@ body `{request_id, category?}` (ไม่ใส่ = ทั้งหมด) → 
 | GET | `/football/fixtures` | api | `{season, fetched_at, matches: [Match]}` · query `season, matchweek, team_id, status` |
 | GET | `/football/matches/{match_id}` | api | `Match` (มี `events`, `lineups`, `statistics` ถ้ามี) |
 | GET | `/football/reports/weekly` | api | `WeeklyReport` · query `season, matchweek` (ไม่ใส่ = ล่าสุด) · **คืนเฉพาะ `published`** · ไม่มี → 404 |
-| GET | `/football/teams` | api, router | `{teams: [Team]}` (รวม aliases — router cache ไว้ใช้ในชั้น rules) |
+| GET | `/football/teams` | api, router, retrieval | `{teams: [Team]}` (รวม aliases — router cache ไว้ใช้ในชั้น rules · retrieval ใช้ขยายคำค้น BM25 ดึงใหม่ทุก 1 ชม. ถ้าดึงไม่ได้ใช้ไฟล์สำรองของตัวเอง) |
 | POST | `/ingest/run` | beat ของ api / admin | `202 {job_id, scope}` · body `{scope: "fixtures" \| "details" \| "all", triggered_by}` |
 | POST | `/reports/weekly/run` | beat ของ api / admin | `202 {job_id}` · body `{season?, matchweek?, triggered_by}` (ไม่ใส่ = แมตช์วีคล่าสุดที่จบครบ) |
 | GET | `/jobs` | api (admin) | `{jobs: [Job]}` · query `kind, status, limit=20` เรียงใหม่ → เก่า |
@@ -574,3 +580,4 @@ body `{request_id, category?}` (ไม่ใส่ = ทั้งหมด) → 
 |---|---|---|
 | v1.0 | (D1) | ฉบับแรก |
 | v1.1 | (D1) | **เพิ่มระบบ Admin** — §1.1 ใหม่ (`/api/admin/*`, สิทธิ์ `role=admin`, audit, error code ใหม่) · ย้าย `GET /api/stats` → `GET /api/admin/stats` · รายงานประจำสัปดาห์มีสถานะ `draft → published → unpublished` และเข้า KB เมื่อ publish เท่านั้น (+ env `REPORT_AUTO_PUBLISH`) · §6 เพิ่ม `POST /index/rebuild` · §7 เพิ่ม `GET /jobs`, endpoint จัดการรายงาน, `triggered_by` · field เดิมไม่ถูกลบ/เปลี่ยนชื่อ ยกเว้น path `/api/stats` ที่ย้าย |
+| v1.2 | (D4) | **เพิ่มเท่านั้น ไม่เปลี่ยน field เดิม** — §4 / §6 เพิ่ม error `INDEX_NOT_READY` (503) · §6 ระบุขอบเขตของ upsert (1–100 เอกสาร, 5 MB, 422 ทั้งคำขอ) · §7 เพิ่ม retrieval เป็นผู้เรียก `GET /football/teams` |
