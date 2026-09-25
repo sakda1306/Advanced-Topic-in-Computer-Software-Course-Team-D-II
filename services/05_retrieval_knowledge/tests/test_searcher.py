@@ -97,10 +97,11 @@ def test_without_aliases_the_thai_query_finds_nothing_in_bm25() -> None:
     assert run(searcher, snapshot, "ปืนใหญ่ชนะไหม", mode="bm25") == []
 
 
-def test_vector_side_embeds_query_original() -> None:
+def test_vector_side_embeds_the_english_query() -> None:
+    # eval PR ③: the Thai original cost hybrid 0.70 -> 0.90 hit@1 on the match set.
     searcher, snapshot, embedder = make()
     run(searcher, snapshot, "Arsenal result", query_original="ปืนใหญ่ชนะไหม")
-    assert embedder.calls[-1] == ["ปืนใหญ่ชนะไหม"]
+    assert embedder.calls[-1] == ["Arsenal result"]
 
 
 def test_filters_limit_every_hit() -> None:

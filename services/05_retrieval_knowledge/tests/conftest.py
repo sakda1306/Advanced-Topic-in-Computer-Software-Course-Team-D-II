@@ -42,6 +42,8 @@ def make_settings(tmp_path: Path, **overrides: Any) -> Settings:
         "football_data_url": "",
         "log_level": "WARNING",
         "log_json": False,
+        # No model downloads in unit tests; the real reranker is tested under -m model.
+        "rerank_model": "",
     }
     values.update(overrides)
     return IsolatedSettings(**values)
