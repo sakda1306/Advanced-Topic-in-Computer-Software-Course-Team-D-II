@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
 from typing import Any
 
 from app.clients.service_client import ServiceClient
@@ -12,13 +14,24 @@ from app.infra.store import Store
 log = get_logger(__name__)
 
 STATUS_CACHE_KEY = "cache:football:status"
+# After 07 fails, chats skip the status call for this long instead of waiting on it each time.
+STATUS_RETRY_SECONDS = 30.0
 
 
 class FootballDataClient:
-    def __init__(self, client: ServiceClient, *, store: Store, status_ttl_seconds: int) -> None:
+    def __init__(
+        self,
+        client: ServiceClient,
+        *,
+        store: Store,
+        status_ttl_seconds: int,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         self._client = client
         self._store = store
         self._status_ttl = status_ttl_seconds
+        self._clock = clock
+        self._status_down_until = 0.0
 
     # -- read ------------------------------------------------------------------
 
@@ -32,10 +45,13 @@ class FootballDataClient:
         cached = await self._store.get_json(STATUS_CACHE_KEY)
         if cached is not None:
             return dict(cached)
+        if self._clock() < self._status_down_until:
+            return None
         try:
             return await self.status()
         except Exception as exc:  # the chat must not fail because 07 is down
             log.warning("football_status_unavailable", error_type=type(exc).__name__)
+            self._status_down_until = self._clock() + STATUS_RETRY_SECONDS
             return None
 
     async def standings(self, season: str | None) -> Any:

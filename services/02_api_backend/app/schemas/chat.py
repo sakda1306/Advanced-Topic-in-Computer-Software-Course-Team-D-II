@@ -7,14 +7,14 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.schemas.common import HistoryMessage, Route, Source, TokenUsage, Trace
+from app.schemas.common import HistoryMessage, Route, Source, Text, TokenUsage, Trace
 
 MAX_MESSAGE_CHARS = 2000
 
 
 class ChatRequest(BaseModel):
     session_id: UUID | None = None
-    message: str = Field(max_length=MAX_MESSAGE_CHARS)
+    message: Text = Field(max_length=MAX_MESSAGE_CHARS)
 
     @field_validator("message")
     @classmethod
@@ -68,7 +68,7 @@ class History(BaseModel):
 class FeedbackRequest(BaseModel):
     message_id: UUID
     rating: Literal[1, -1]
-    comment: str | None = Field(default=None, max_length=1000)
+    comment: Text | None = Field(default=None, max_length=1000)
 
 
 # ---------------------------------------------------------------- api -> router

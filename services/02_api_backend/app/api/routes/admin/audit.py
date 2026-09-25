@@ -9,7 +9,7 @@ from fastapi import APIRouter, Query
 
 from app.api.deps import DbDep
 from app.schemas.admin import AuditEntryOut
-from app.schemas.common import Page
+from app.schemas.common import Page, Text
 from app.services import audit as audit_service
 
 router = APIRouter()
@@ -19,7 +19,7 @@ router = APIRouter()
 async def audit(
     db: DbDep,
     actor_id: UUID | None = None,
-    action: Annotated[str | None, Query(max_length=40)] = None,
+    action: Annotated[Text | None, Query(max_length=40)] = None,
     days: Annotated[int, Query(ge=1, le=90)] = 7,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     cursor: Annotated[str | None, Query(max_length=200)] = None,
