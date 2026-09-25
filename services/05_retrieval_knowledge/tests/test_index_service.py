@@ -15,10 +15,16 @@ import pytest
 
 import app.index.service as service_module
 from app.core.clock import BANGKOK
-from app.index.service import IndexService, IndexStats, UpsertResult, index_stats
+from app.index.service import (
+    IndexService,
+    IndexStats,
+    RebuildResult,
+    UpsertResult,
+    index_stats,
+)
 from app.kb.store import META_MODEL, KnowledgeStore
-from tests.fakes import FakeEmbedder
-from tests.samples import MATCH, SAMPLE_CHUNK_COUNT, SAMPLE_DOCUMENTS
+from tests.fakes import FakeEmbedder, GatedEmbedder
+from tests.samples import FIXTURES, MATCH, SAMPLE_CHUNK_COUNT, SAMPLE_DOCUMENTS
 
 
 class Clock:
@@ -217,6 +223,77 @@ async def test_new_embedding_model_reembeds_everything_once(store: KnowledgeStor
     again = FakeEmbedder("model-b")
     await service(store, again).load()
     assert again.calls == []
+
+
+def ids_in(index: IndexService) -> set[str]:
+    assert index.snapshot is not None
+    return {r.chunk.doc_id for r in index.snapshot.records}
+
+
+async def test_rebuild_reembeds_everything_and_bumps_the_version(store: KnowledgeStore) -> None:
+    embedder = FakeEmbedder()
+    index = service(store, embedder)
+    first = await index.upsert(SAMPLE_DOCUMENTS)
+    result = await index.rebuild()
+    assert result == RebuildResult(6, SAMPLE_CHUNK_COUNT, result.index_version)
+    assert result.index_version != first.index_version
+    assert len(embedder.calls[-1]) == SAMPLE_CHUNK_COUNT
+    snapshot = index.snapshot
+    assert snapshot is not None
+    assert snapshot.size == snapshot.faiss_count == snapshot.bm25_count == SAMPLE_CHUNK_COUNT
+    assert snapshot.index_version == store.get_meta("index_version") == result.index_version
+    assert len(store.load_all()) == SAMPLE_CHUNK_COUNT
+
+
+async def test_rebuild_of_one_category_embeds_only_that_category(store: KnowledgeStore) -> None:
+    embedder = FakeEmbedder()
+    index = service(store, embedder)
+    await index.upsert(SAMPLE_DOCUMENTS)
+    result = await index.rebuild("match_report")
+    assert (result.documents, result.chunks) == (1, 2)
+    assert [len(batch) for batch in embedder.calls[1:]] == [2]
+    assert index.snapshot is not None
+    assert index.snapshot.size == SAMPLE_CHUNK_COUNT
+
+
+async def test_writes_during_a_rebuild_are_kept(store: KnowledgeStore) -> None:
+    embedder = GatedEmbedder()
+    index = service(store, embedder)
+    await index.upsert(SAMPLE_DOCUMENTS)
+    before = index.snapshot
+    changed = replace(MATCH, text="Arsenal 3-1 Chelsea after a late goal.")
+
+    embedder.hold_next = True
+    task = asyncio.create_task(index.rebuild())
+    await asyncio.to_thread(embedder.entered.wait, 10)
+    # Mid-embedding: searches still see the old snapshot and writes do not wait.
+    assert index.snapshot is before
+    await index.upsert([changed])
+    assert await index.delete(FIXTURES.doc_id) is True
+    calls = len(embedder.calls)
+    embedder.release.set()
+    result = await task
+
+    assert ids_in(index) == {d.doc_id for d in SAMPLE_DOCUMENTS} - {FIXTURES.doc_id}
+    assert result.documents == 5
+    assert index.snapshot is not None
+    texts = {r.document.doc_id: r.document.text for r in index.snapshot.records}
+    assert texts[MATCH.doc_id] == changed.text
+    # Only the document written during the rebuild is embedded again, not the whole store.
+    assert [len(batch) for batch in embedder.calls[calls + 1 :]] == [1]
+    assert {s.chunk.doc_id for s in store.load_all()} == ids_in(index)
+
+
+async def test_rebuild_failure_changes_nothing(store: KnowledgeStore) -> None:
+    embedder = FakeEmbedder()
+    index = service(store, embedder)
+    first = await index.upsert(SAMPLE_DOCUMENTS)
+    before = index.snapshot
+    embedder.fail = True
+    with pytest.raises(RuntimeError):
+        await index.rebuild()
+    assert index.snapshot is before
+    assert store.get_meta("index_version") == first.index_version
 
 
 async def test_a_started_write_finishes_even_if_its_caller_is_cancelled(

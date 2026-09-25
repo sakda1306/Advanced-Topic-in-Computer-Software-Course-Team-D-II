@@ -86,3 +86,22 @@ class StatsResponse(BaseModel):
     chunks: int
     by_category: dict[str, int]
     index_version: str | None
+
+
+class RebuildRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    request_id: str | None = Field(default=None, max_length=64)
+    category: Category | None = None  # none = every category
+
+
+class RebuildAccepted(BaseModel):
+    job_id: str
+
+
+class JobResponse(BaseModel):
+    job_id: str
+    status: str
+    started_at: str | None
+    finished_at: str | None
+    detail: str | None

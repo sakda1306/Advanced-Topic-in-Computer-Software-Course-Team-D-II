@@ -3,7 +3,7 @@
     RETRIEVAL_URL=http://localhost:8000 python scripts/smoke.py
 
 Waits for /ready, then checks the CONTRACT §4 shape on the real knowledge base, and the
-§6 index round trip (upsert -> search -> delete) with a document it removes again.
+§6 index round trip (upsert -> search -> rebuild -> delete) with a document it removes again.
 Exits 1 on the first failed check.
 """
 
@@ -93,6 +93,15 @@ def found(client: httpx.Client, query: str) -> list[str]:
     return [c["source"]["doc_id"] for c in response.json().get("chunks", [])]
 
 
+def wait_job(client: httpx.Client, job_id: str, seconds: int = 120) -> dict[str, Any]:
+    deadline = time.monotonic() + seconds
+    while True:
+        job: dict[str, Any] = client.get(f"/index/jobs/{job_id}").json()
+        if job.get("status") in ("done", "failed") or time.monotonic() > deadline:
+            return job
+        time.sleep(1)
+
+
 def index_round_trip(client: httpx.Client) -> None:
     doc_id = SMOKE_DOC["doc_id"]
     client.delete(f"/index/{doc_id}")  # left over from an interrupted run
@@ -103,6 +112,12 @@ def index_round_trip(client: httpx.Client) -> None:
     check("the upserted document is found", doc_id in found(client, "Zyxwv Checkpoint Park"))
     stats = client.get("/index/stats").json()
     check("GET /index/stats counts it", stats["documents"] == before["documents"] + 1)
+
+    response = client.post("/index/rebuild", json={"category": "match_report"})
+    check("POST /index/rebuild -> 202", response.status_code == 202, response)
+    job = wait_job(client, response.json()["job_id"])
+    check("the rebuild job is done", job.get("status") == "done")
+    check("still found after the rebuild", doc_id in found(client, "Zyxwv Checkpoint Park"))
 
     response = client.delete(f"/index/{doc_id}")
     check("DELETE /index/{doc_id}", response.json() == {"deleted": True}, response)

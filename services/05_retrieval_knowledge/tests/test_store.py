@@ -105,6 +105,13 @@ def test_deleting_an_unknown_document_changes_nothing(store: KnowledgeStore) -> 
     assert store.get_meta(META_VERSION) == "v1"
 
 
+def test_load_documents_all_or_one_category(store: KnowledgeStore) -> None:
+    write(store, SAMPLE_DOCUMENTS)
+    assert store.load_documents() == sorted(SAMPLE_DOCUMENTS, key=lambda d: d.doc_id)
+    assert store.load_documents("match_report") == [MATCH]
+    assert store.load_documents("weekly_report") == []
+
+
 def test_data_survives_reopening(tmp_path: Path) -> None:
     path = str(tmp_path / "kb.sqlite")
     first = KnowledgeStore(path)

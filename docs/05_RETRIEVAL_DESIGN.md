@@ -125,8 +125,10 @@ services/05_retrieval_knowledge/
 
 ### `POST /index/rebuild` + `GET /index/jobs/{job_id}`
 - รับ `{request_id, category?}` → `202 {job_id}` · ทำใน background: ตัด chunk + embed ใหม่จากข้อความใน SQLite แล้วสลับทีเดียว · ระหว่างนั้น `/search` ใช้ index เดิม
+- สองขั้นเพื่อไม่ให้ upsert / delete ของ 07 ต้องรอ: **ขั้น 1 ไม่ถือ lock** อ่านเอกสาร ตัด chunk และ embed ทั้งชุด (ส่วนที่ช้า) · **ขั้น 2 ถือ lock** อ่าน SQLite อีกรอบ embed เฉพาะข้อความที่เปลี่ยนระหว่างขั้น 1 → สร้าง snapshot → เขียน SQLite transaction เดียว → สลับ · เอกสารที่ถูก upsert / ลบระหว่างขั้น 1 จึงไม่หายและไม่กลับมา · คลังจริงใช้ราว 24 วินาที
+- `status`: `queued | running | done | failed` ตาม `Job` ใน CONTRACT §1.1 · `detail` = สรุปจำนวนเมื่อสำเร็จ หรือชนิดของ error เมื่อล้ม (ไม่เปิดเผยรายละเอียดภายใน) · shutdown ระหว่างขั้น 1 (embed) → `failed` / `cancelled` และ index ไม่เปลี่ยน · ถ้าถึงขั้น 2 (ถือ lock เขียน SQLite) แล้ว ขั้นนี้ทำจนจบและสลับ snapshot ก่อนปิด SQLite (รีวิว #9: thread หยุดกลางทางไม่ได้)
 - สั่งซ้ำขณะรันอยู่ → 409 `JOB_ALREADY_RUNNING`
-- job อยู่ในหน่วยความจำ 50 รายการล่าสุด: `{job_id, status, started_at, finished_at, detail}` · restart แล้วหาย
+- job อยู่ในหน่วยความจำ 50 รายการล่าสุด: `{job_id, status, started_at, finished_at, detail}` · **restart แล้วหาย → `GET /index/jobs/{job_id}` ได้ 404** หน้า admin ให้ถือว่างานนั้นจบไม่แน่ชัด แล้วสั่ง rebuild ใหม่ได้ ไม่มีอะไรเสียหาย เพราะ rebuild ที่ไม่จบไม่เปลี่ยน index · เลือกไม่เก็บลง SQLite เพราะ rebuild เป็นระดับ Could (ตัดสินหลังรีวิว #9)
 
 ### snapshot
 - ก้อนที่ไม่ถูกแก้หลังสร้าง: FAISS (`IndexIDMap2` + `IndexFlatIP`) · BM25 · metadata ของ chunk · `index_version`
@@ -205,7 +207,7 @@ services/05_retrieval_knowledge/
 |---|---|---|---|
 | ① | โครง service · SQLite · ingest trivia · snapshot · `/search` ครบทุกโหมด + filter + ชื่อเล่นจากไฟล์ + rerank flag · `/health` · `/ready` · เทส · CI | 03, 06 | D3 |
 | ②a | `/index/upsert` · `DELETE /index/{doc_id}` · `/index/stats` · ดึงชื่อเล่นจาก 07 | 07 | D4 |
-| ②b | `/index/rebuild` · `/index/jobs/{job_id}` (Could) | – | D4 |
+| ②b | `/index/rebuild` · `/index/jobs/{job_id}` (Could) | 02 หน้า admin | D4 |
 | ③ | golden sets · eval script · ตัวเลขใน README | – | D5 |
 | CONTRACT (แยก) | §7 เพิ่ม retrieval เป็นผู้เรียก `GET /football/teams` · §4 / §6 เพิ่ม `INDEX_NOT_READY` (503) | – | คู่กับ PR ②a |
 

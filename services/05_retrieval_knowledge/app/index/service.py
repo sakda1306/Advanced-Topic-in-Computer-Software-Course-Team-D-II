@@ -5,6 +5,10 @@ anything is written, the store is written in one transaction, and only then is t
 snapshot swapped in. If any step fails, the store and the snapshot that searches use are
 both unchanged. A delete follows the same order.
 
+A rebuild re-chunks and re-embeds stored documents in two steps, so writes do not wait
+for the slow part: it embeds everything without the lock, then takes the lock, re-reads
+the store and embeds only the text that changed in the meantime before swapping.
+
 Once a write has started it runs to the end even if its caller is cancelled (shutdown,
 a dropped request): the worker thread cannot be stopped halfway, so stopping only the
 coroutine could leave SQLite written and the snapshot not swapped. `drain()` waits for
@@ -39,6 +43,13 @@ T = TypeVar("T")
 @dataclass(frozen=True, slots=True)
 class UpsertResult:
     upserted: int
+    chunks: int
+    index_version: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class RebuildResult:
+    documents: int
     chunks: int
     index_version: str | None
 
@@ -124,6 +135,36 @@ class IndexService:
             self._snapshot = snapshot or current
             return snapshot is not None
 
+    async def rebuild(self, category: str | None = None) -> RebuildResult:
+        """Re-chunk and re-embed the stored documents of one category, or of all of them."""
+        # Step 1, no lock: the slow embedding; searches and writes go on meanwhile.
+        # Cancelling here is safe; the read that uses the store is still waited for.
+        documents = await self._to_the_end(asyncio.to_thread(self._store.load_documents, category))
+        embedded = await asyncio.to_thread(self._embed_texts, documents, {})
+        # Step 2, locked: pick up what was written during step 1, then swap. It writes
+        # SQLite, so once started it runs to the end like any other write.
+        return await self._to_the_end(self._rebuild(category, embedded))
+
+    async def _rebuild(
+        self, category: str | None, embedded: dict[str, np.ndarray]
+    ) -> RebuildResult:
+        async with self._lock:
+            current = self._snapshot or await asyncio.to_thread(self._load_sync)
+            snapshot, result = await asyncio.to_thread(
+                self._rebuild_sync, current, category, embedded
+            )
+            self._snapshot = snapshot
+            return result
+
+    def _embed_texts(
+        self, documents: Sequence[Document], known: dict[str, np.ndarray]
+    ) -> dict[str, np.ndarray]:
+        """Vectors by chunk text; texts already in `known` are not embedded again."""
+        texts = {c.text for d in documents for c in chunk_document(d)} - known.keys()
+        ordered = sorted(texts)
+        vectors = self._embedder.encode(ordered) if ordered else []
+        return {**known, **dict(zip(ordered, vectors, strict=True))}
+
     def _load_sync(self) -> Snapshot:
         stored = self._store.load_all()
         if stored and self._store.get_meta(META_MODEL) != self._embedder.model_name:
@@ -188,3 +229,35 @@ class IndexService:
         self._store.delete_document(doc_id, meta={META_VERSION: version})
         log.info("index_document_deleted", doc_id=doc_id, index_version=version)
         return snapshot
+
+    def _rebuild_sync(
+        self, current: Snapshot, category: str | None, embedded: dict[str, np.ndarray]
+    ) -> tuple[Snapshot, RebuildResult]:
+        documents = self._store.load_documents(category)
+        embedded = self._embed_texts(documents, embedded)
+        chunks = {d.doc_id: chunk_document(d) for d in documents}
+        flat = [c for d in documents for c in chunks[d.doc_id]]
+        embeddings = {c.chunk_id: embedded[c.text] for c in flat}
+        version = version_stamp(self._clock())
+        by_id = {d.doc_id: d for d in documents}
+        records = [
+            r for r in current.records if category is not None and r.document.category != category
+        ]
+        records += [_indexed(c, by_id[c.doc_id], embeddings[c.chunk_id]) for c in flat]
+        # Built before the write: if it fails, the store never sees the change.
+        snapshot = Snapshot(records, dimension=self._embedder.dimension, index_version=version)
+        self._store.replace_documents(
+            documents,
+            chunks,
+            embeddings,
+            updated_at=version,
+            meta={META_VERSION: version, META_MODEL: self._embedder.model_name},
+        )
+        log.info(
+            "index_rebuilt",
+            category=category,
+            documents=len(documents),
+            chunks=len(flat),
+            index_version=version,
+        )
+        return snapshot, RebuildResult(len(documents), len(flat), version)
