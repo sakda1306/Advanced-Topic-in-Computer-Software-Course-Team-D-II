@@ -13,6 +13,7 @@ import threading
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -67,6 +68,29 @@ class StoredChunk:
     chunk: Chunk
     document: Document
     embedding: np.ndarray
+
+
+_DOCUMENT_COLUMNS = (
+    "d.doc_id, d.title, d.category, d.origin, d.text, d.season, d.matchweek, "
+    "d.team_ids, d.date, d.fetched_at, d.url, d.topic"
+)
+
+
+def _document(row: Sequence[Any]) -> Document:
+    return Document(
+        doc_id=row[0],
+        title=row[1],
+        category=row[2],
+        origin=row[3],
+        text=row[4],
+        season=row[5],
+        matchweek=row[6],
+        team_ids=tuple(json.loads(row[7])),
+        date=row[8],
+        fetched_at=row[9],
+        url=row[10],
+        topic=row[11],
+    )
 
 
 def _to_blob(vector: np.ndarray) -> bytes:
@@ -190,8 +214,7 @@ class KnowledgeStore:
     def load_all(self) -> list[StoredChunk]:
         with self._lock:
             rows = self._conn.execute(
-                "SELECT d.doc_id, d.title, d.category, d.origin, d.text, d.season, d.matchweek, "
-                "d.team_ids, d.date, d.fetched_at, d.url, d.topic, "
+                f"SELECT {_DOCUMENT_COLUMNS}, "  # noqa: S608 - a constant column list
                 "c.chunk_id, c.ord, c.text, c.bm25_text, c.embedding "
                 "FROM chunks c JOIN documents d ON d.doc_id = c.doc_id "
                 "ORDER BY d.doc_id, c.ord"
@@ -201,22 +224,21 @@ class KnowledgeStore:
         for row in rows:
             doc_id = row[0]
             if doc_id not in documents:
-                documents[doc_id] = Document(
-                    doc_id=doc_id,
-                    title=row[1],
-                    category=row[2],
-                    origin=row[3],
-                    text=row[4],
-                    season=row[5],
-                    matchweek=row[6],
-                    team_ids=tuple(json.loads(row[7])),
-                    date=row[8],
-                    fetched_at=row[9],
-                    url=row[10],
-                    topic=row[11],
-                )
+                documents[doc_id] = _document(row)
             chunk = Chunk(
                 chunk_id=row[12], doc_id=doc_id, ord=row[13], text=row[14], bm25_text=row[15]
             )
             stored.append(StoredChunk(chunk, documents[doc_id], _from_blob(row[16])))
         return stored
+
+    def load_documents(self, category: str | None = None) -> list[Document]:
+        """Documents without their chunks, by doc_id; one category or all of them."""
+        query = f"SELECT {_DOCUMENT_COLUMNS} FROM documents d"  # noqa: S608 - constant columns
+        with self._lock:
+            if category is None:
+                rows = self._conn.execute(f"{query} ORDER BY d.doc_id").fetchall()
+            else:
+                rows = self._conn.execute(
+                    f"{query} WHERE d.category = ? ORDER BY d.doc_id", (category,)
+                ).fetchall()
+        return [_document(row) for row in rows]

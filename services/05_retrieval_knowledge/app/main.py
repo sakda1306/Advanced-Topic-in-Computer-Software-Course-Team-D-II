@@ -71,6 +71,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                 await task
         if client is not None:
             await client.aclose()
+        await container.jobs.close()
         # A load or write already in a worker thread still uses the store: let it finish.
         await container.index.drain()
         container.store.close()

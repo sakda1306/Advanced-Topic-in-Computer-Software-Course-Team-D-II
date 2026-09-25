@@ -4,13 +4,21 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Path
+from fastapi import APIRouter, Path, status
 
 from app.api.deps import Container, ContainerDep
 from app.core.errors import AppError, ErrorCode
 from app.core.ids import current_request_id
 from app.index.service import index_stats
-from app.schemas.index import DeleteResponse, StatsResponse, UpsertRequest, UpsertResponse
+from app.schemas.index import (
+    DeleteResponse,
+    JobResponse,
+    RebuildAccepted,
+    RebuildRequest,
+    StatsResponse,
+    UpsertRequest,
+    UpsertResponse,
+)
 
 router = APIRouter(prefix="/index", tags=["index"])
 
@@ -53,3 +61,24 @@ async def delete(
 ) -> DeleteResponse:
     _ready(container)
     return DeleteResponse(deleted=await container.index.delete(doc_id))
+
+
+@router.post("/rebuild", status_code=status.HTTP_202_ACCEPTED)
+async def rebuild(body: RebuildRequest, container: ContainerDep) -> RebuildAccepted:
+    if container.index.snapshot is None:
+        raise AppError(ErrorCode.INDEX_NOT_READY)
+    return RebuildAccepted(job_id=container.jobs.start(body.category).job_id)
+
+
+@router.get("/jobs/{job_id}")
+async def job(job_id: Annotated[str, Path(max_length=64)], container: ContainerDep) -> JobResponse:
+    found = container.jobs.get(job_id)
+    if found is None:
+        raise AppError(ErrorCode.NOT_FOUND)
+    return JobResponse(
+        job_id=found.job_id,
+        status=found.status,
+        started_at=found.started_at,
+        finished_at=found.finished_at,
+        detail=found.detail,
+    )

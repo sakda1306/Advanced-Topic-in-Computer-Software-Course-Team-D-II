@@ -7,7 +7,7 @@
 | `POST /search` | §4 | ใช้ได้ |
 | `GET /health` · `GET /ready` | §0 · healthcheck ของ compose | ใช้ได้ |
 | `POST /index/upsert` · `DELETE /index/{doc_id}` · `GET /index/stats` | §6 | ใช้ได้ |
-| `POST /index/rebuild` · `GET /index/jobs/{job_id}` | §6 | PR ②b |
+| `POST /index/rebuild` · `GET /index/jobs/{job_id}` | §6 | ใช้ได้ |
 
 ## ตัวแก้ปัญหาจาก week5 ที่อยู่ใน service นี้
 
@@ -50,7 +50,7 @@ uvicorn app.main:app --port 8005 --workers 1                      # เอกส
 ```bash
 pytest -q                 # ใช้ FakeEmbedder ไม่ต้องโหลดโมเดล
 pytest -q -m model        # โมเดลจริงกับคลังจริง
-RETRIEVAL_URL=http://localhost:8005 python scripts/smoke.py   # รวม upsert → search → delete ด้วยเอกสารทดสอบที่ลบคืนเอง
+RETRIEVAL_URL=http://localhost:8005 python scripts/smoke.py   # รวม upsert → search → rebuild → delete ด้วยเอกสารทดสอบที่ลบคืนเอง
 ruff check . && ruff format --check .
 ```
 
@@ -63,3 +63,4 @@ ruff check . && ruff format --check .
 - **upsert และ delete สำเร็จหรือไม่สำเร็จทั้งก้อน** embed และสร้าง snapshot ใหม่ก่อนเขียน SQLite ขั้นไหนล้ม → 500 และทั้ง SQLite กับ `/search` ยังเป็นรุ่นเดิม · เริ่มเขียนแล้วทำจนจบแม้ผู้เรียกถูกยกเลิก (shutdown / request หลุด) และตอนปิด service รอให้จบก่อนปิด SQLite
 - **index ยังโหลดไม่เสร็จ → upsert / delete ได้ 503 `INDEX_NOT_READY`** เหมือน `/search` และ `/index/stats` · 07 ถือเป็น job ล้มแล้ว retry
 - **`by_category` ใน `/index/stats` นับเป็นจำนวนเอกสาร** ต่อ category ไม่ใช่จำนวน chunk
+- **rebuild ไม่ขวาง upsert** embed ทั้งชุดโดยไม่ถือ lock แล้วค่อยถือ lock อ่าน SQLite ใหม่ embed เฉพาะที่เปลี่ยนระหว่างนั้นแล้วสลับ · คลังจริง 1,954 chunk ใช้ราว 24 วินาที ระหว่างนั้น upsert ตอบใน 78 ms · rebuild ได้ทีละงาน (ซ้ำ → 409) · job อยู่ในหน่วยความจำ 50 รายการล่าสุด **restart แล้วหาย `GET /index/jobs/{job_id}` ได้ 404** สั่ง rebuild ใหม่ได้ (rebuild ที่ไม่จบไม่เปลี่ยน index) · ปิด service ระหว่าง rebuild: ถ้ากำลังเขียน SQLite จะเขียนและสลับ snapshot จนจบก่อนปิด
