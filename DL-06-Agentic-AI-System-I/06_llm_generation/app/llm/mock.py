@@ -56,7 +56,12 @@ class MockLLMClient:
         return f"{title.strip()} — {snippet} [{n}]"
 
     def _respond_translate(self, user_content: str) -> str:
-        draft_m = re.search(r"<draft>\s*(.*?)\s*</draft>", user_content, flags=re.DOTALL)
+        # ระวัง: system/user prompt เอง มีคำว่า "<draft>" โผล่ในประโยคคำสั่งด้วย
+        # ("แปลข้อความใน <draft> เป็นภาษา...") ถ้าใช้ <draft>\s*(.*?)\s*</draft>
+        # เฉย ๆ regex จะจับ match จากตำแหน่งซ้ายสุด (คำสั่ง) ไปจนถึง </draft> ตัวจริง
+        # ทำให้ดึงเนื้อหาผิดทั้งก้อน — บังคับให้ tag เปิดต้องตามด้วยขึ้นบรรทัดใหม่ทันที
+        # ให้ตรงกับรูปแบบที่ template ห่อจริง (<draft>\n{{ draft }}\n</draft>)
+        draft_m = re.search(r"<draft>\n(.*?)\n</draft>", user_content, flags=re.DOTALL)
         draft = draft_m.group(1) if draft_m else user_content
         return draft  # mock: คืนต้นฉบับตรง ๆ (คงตัวเลข/ชื่อ/เลขอ้างอิงเดิมทุกตัวตาม spec)
 

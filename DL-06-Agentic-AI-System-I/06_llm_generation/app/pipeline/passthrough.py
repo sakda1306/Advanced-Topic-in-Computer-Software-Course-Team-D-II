@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
@@ -15,8 +16,8 @@ from app.numeric_guard import extract_standalone_numbers, normalize_text
 from app.safety import gambling
 from app.schemas import GenerateRequest, GenerateResponse, SafetyInfo, TokenUsage
 
-_PROMPTS_DIR = __file__.rsplit("/app/", 1)[0] + "/prompts"
-_env = Environment(loader=FileSystemLoader(_PROMPTS_DIR), undefined=StrictUndefined, trim_blocks=True)
+_PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
+_env = Environment(loader=FileSystemLoader(str(_PROMPTS_DIR)), undefined=StrictUndefined, trim_blocks=True)
 
 
 async def run_passthrough(

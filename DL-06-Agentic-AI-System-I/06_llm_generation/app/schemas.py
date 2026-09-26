@@ -115,8 +115,11 @@ class Match(BaseModel):
     away: TeamRef
     score: Score | None = None
     events: list[MatchEvent] = Field(default_factory=list)
-    lineups: dict | None = None
-    statistics: dict | None = None
+    # 07 (api-football) ส่ง lineups/statistics เป็น list เสมอ ส่วนแหล่งอื่นอาจส่งเป็น dict
+    # หรือไม่ส่งเลย (None) — รับแบบหลวมตามกติกาหัวข้อ 4 แล้วส่งต่อ/ใช้งานตามที่มาจริง
+    # ห้าม normalize/ทำหายเพื่อไม่ให้ขัดกับรูปแบบที่ 07 ส่งจริง
+    lineups: dict | list | None = None
+    statistics: dict | list | None = None
     fetched_at: str | None = None
     detail_source: str = "none"
 

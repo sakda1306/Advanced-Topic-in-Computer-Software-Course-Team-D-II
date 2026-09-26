@@ -225,3 +225,15 @@ ruff check app/ tests/
 - `scripts/eval_generation.py` ยังคำนวณเฉพาะ `citation_valid_rate`, `safety_block_rate`, `latency` — ยังไม่ครบ `expected_source_hit_rate` / `numeric_grounded_rate` / `insufficient_correct_rate` (ต้องเพิ่ม field คาดหวังในแต่ละ fixture ก่อน)
 - fixtures ยังไม่ครบ 14 ชุดตามหัวข้อ 15.1 (มี 8 ชุด: trivia_1, trivia_2, match_1, match_2, insufficient_1, injection_ctx, gambling_query, historical_odds_ok) — ที่เหลือ (`insufficient_calc`, `followup_history`, `bad_citation`, `scheduled_match`, `passthrough_*`, `weekly_*`) ยังไม่ได้เขียน
 - ยังไม่ได้ยิงทดสอบกับ provider จริง (Groq/Gemini) ด้วยมือ — ต้องมี `GROQ_API_KEY`/`GEMINI_API_KEY` ของสมาชิกก่อน
+- CI ของโมดูล (GitHub Actions) ยังไม่มี — อยู่นอกขอบเขตไฟล์ที่ 06 แก้ได้เอง (`.github/` เป็นของหัวหน้า/member6 ตามกฎเหล็ก 3.1) ต้องขอให้ทีมเพิ่ม workflow ที่รัน `LLM_MOCK=true pytest tests/ -q` และ `ruff check app/ tests/` บน push/PR ของ `services/06_llm_generation/**`
+
+---
+
+## แก้ไขตามรีวิว PR #11
+
+- แก้ path template (`grounded.py`, `passthrough.py`, `weekly.py`) จากการตัด string ด้วย `/app/` เป็น `Path(__file__).resolve().parents[2] / "prompts"` เพื่อให้โหลด template ได้ทั้ง Windows และ Linux/CI
+- `Match.lineups` / `Match.statistics` ใน `schemas.py` รับได้ทั้ง `dict` และ `list` (07/api-football ส่งเป็น list) กัน `/report/weekly` ตอบ 422 เมื่อมีรายละเอียดแมตช์ครบ พร้อมเทส `test_weekly_report_accepts_list_lineups_and_statistics`
+- `grounded.py` เก็บสกอร์จาก context ด้วย `numeric_guard.find_score_claims` (เดิมใช้ `re.search` ได้แค่คู่แรกต่อ chunk) กันคำตอบที่อ้างสกอร์คู่ที่สองในรายงานสัปดาห์เดียวกันถูกมองว่าผิดแล้วแทนด้วย insufficient ผิด ๆ พร้อมเทส `tests/test_grounded_pipeline.py`
+- ย้ายโครง service มาไว้ใต้ `services/06_llm_generation/` ให้ตรงกับ `GIT_FLOW` และคำสั่งใน README เอง (เดิมอยู่ผิดตำแหน่ง)
+- `app/llm/mock.py` (`_respond_translate`) แก้ regex ดึงเนื้อ `<draft>` — เดิม `<draft>\s*(.*?)\s*</draft>` จับ match ผิดตำแหน่งเพราะคำว่า `<draft>` โผล่ซ้ำในประโยคคำสั่งของ template เอง (`"แปลข้อความใน <draft> เป็นภาษา..."`) ทำให้ mock คืนทั้งก้อน system prompt ปนมากับ draft แทนที่จะคืนแค่ draft พบจากการรัน `LLM_MOCK=true` ทดสอบ passthrough translate จริงแล้วคำตอบเพี้ยน แก้เป็น `<draft>\n(.*?)\n</draft>` (บังคับให้ตามด้วยขึ้นบรรทัดใหม่ทันที ตรงกับที่ template ห่อจริง) พร้อมเทส `test_passthrough_translate_extracts_draft_not_whole_prompt`
+

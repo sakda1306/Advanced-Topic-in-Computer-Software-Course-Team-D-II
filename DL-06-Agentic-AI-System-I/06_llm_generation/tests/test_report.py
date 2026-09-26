@@ -64,6 +64,35 @@ def test_weekly_report_empty_matches_422(client):
     assert resp.status_code == 422
 
 
+def test_weekly_report_accepts_list_lineups_and_statistics(client):
+    """07 (api-football) ส่ง lineups/statistics เป็น list เสมอ (ไม่ใช่ dict) — ต้องไม่ 422"""
+    body = {
+        "request_id": "66666666-6666-6666-6666-666666666666",
+        "season": "2026",
+        "matchweek": 5,
+        "language": "th",
+        "matches": [
+            _base_match(
+                detail_source="api-football",
+                lineups=[
+                    {"team_id": 57, "formation": "4-3-3", "starting_xi": ["A. Ramsdale"]},
+                    {"team_id": 61, "formation": "4-2-3-1", "starting_xi": ["R. Sanchez"]},
+                ],
+                statistics=[
+                    {"team_id": 57, "possession": 58, "shots_on_target": 6},
+                    {"team_id": 61, "possession": 42, "shots_on_target": 3},
+                ],
+            )
+        ],
+        "standings": [],
+        "top_scorers": [],
+    }
+    resp = client.post("/report/weekly", json=body)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "## ผลการแข่งขัน" in data["markdown"]
+
+
 def test_weekly_report_pipe_in_team_name_safe(client):
     body = {
         "season": "2026",

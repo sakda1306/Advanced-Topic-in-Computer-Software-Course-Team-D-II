@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
@@ -22,8 +23,8 @@ from app.schemas import (
     WeeklyReportResponse,
 )
 
-_PROMPTS_DIR = __file__.rsplit("/app/", 1)[0] + "/prompts"
-_env = Environment(loader=FileSystemLoader(_PROMPTS_DIR), undefined=StrictUndefined, trim_blocks=True)
+_PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
+_env = Environment(loader=FileSystemLoader(str(_PROMPTS_DIR)), undefined=StrictUndefined, trim_blocks=True)
 
 
 def _yy(season: str) -> str:

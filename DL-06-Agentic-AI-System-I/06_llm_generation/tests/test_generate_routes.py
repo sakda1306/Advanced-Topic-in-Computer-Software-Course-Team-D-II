@@ -109,6 +109,23 @@ def test_passthrough_gambling_blocked(client):
     assert data["safety"]["blocked"] is True
 
 
+def test_passthrough_translate_extracts_draft_not_whole_prompt(client):
+    """mock ต้องดึงเฉพาะเนื้อ <draft> จริง ไม่ใช่ทั้งก้อน system/user prompt
+    (เคยมีบั๊ก: คำว่า "<draft>" ที่โผล่ในประโยคคำสั่งเองทำให้ regex จับผิดตำแหน่ง)
+    """
+    draft = "Arsenal won 2-1 against Chelsea yesterday at the Emirates."
+    resp = client.post(
+        "/generate",
+        json={"mode": "passthrough", "query": "", "language": "th", "draft": draft},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    # mock คืน draft เดิมตรง ๆ (คงตัวเลข/ชื่อ/เลขอ้างอิงเดิม) — ต้องไม่ปนคำสั่งระบบ
+    assert data["answer"].strip() == draft
+    assert "รักษาความหมายเดิม" not in data["answer"]
+    assert "ตอบเฉพาะข้อความที่แปลแล้ว" not in data["answer"]
+
+
 def test_extra_field_ignored(client):
     body = load("trivia_1")
     body["some_new_optional_field"] = "hello"

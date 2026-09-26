@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import re
 import time
+from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
@@ -18,7 +19,7 @@ from app.config import Settings
 from app.errors import AppValidationError, LLMUnavailable
 from app.llm.client import LLMClient, new_canary
 from app.middleware import log_event
-from app.numeric_guard import check_score_mismatch
+from app.numeric_guard import check_score_mismatch, find_score_claims
 from app.safety import gambling, injection
 from app.schemas import (
     GenerateRequest,
@@ -28,9 +29,9 @@ from app.schemas import (
     TokenUsage,
 )
 
-_PROMPTS_DIR = __file__.rsplit("/app/", 1)[0] + "/prompts"
+_PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 _env = Environment(
-    loader=FileSystemLoader(_PROMPTS_DIR), undefined=StrictUndefined, trim_blocks=True
+    loader=FileSystemLoader(str(_PROMPTS_DIR)), undefined=StrictUndefined, trim_blocks=True
 )
 
 INSUFFICIENT_TH = "ไม่พบข้อมูลที่เพียงพอในคลังข้อมูลเพื่อตอบคำถามนี้"
@@ -113,9 +114,10 @@ async def run_grounded(
         if injection.detect_injection(clean_text):
             log_event("injection_suspected", request_id, ref=c.ref, doc_id=c.source.doc_id)
         sanitized_contexts.append((c.ref, clean_text, c.source))
-        m = re.search(r"(\d{1,2})\s*[-:]\s*(\d{1,2})", clean_text)
-        if m:
-            known_scores.add((int(m.group(1)), int(m.group(2))))
+        # เก็บสกอร์ "ทุกคู่" ที่ปรากฏใน chunk นี้ (ไม่ใช่แค่คู่แรก) — chunk รายงาน
+        # สัปดาห์จาก 07/05 อาจมีหลายแมตช์ในก้อนเดียวกัน ใช้ตัวตรวจร่วมกับ
+        # numeric_guard เพื่อกันสกอร์ปลอมจากรูปแบบเวลา/ปี/matchweek ให้สม่ำเสมอกัน
+        known_scores.update(find_score_claims(clean_text))
 
     # token budget: ตัด context ท้ายสุดก่อนถ้าเกิน (คง ref เดิม ห้าม renumber)
     from app.tokens import estimate_tokens
