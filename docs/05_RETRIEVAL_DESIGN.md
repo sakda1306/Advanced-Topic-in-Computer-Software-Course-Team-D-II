@@ -219,3 +219,148 @@ services/05_retrieval_knowledge/
 - image ใหญ่ (torch CPU + โมเดล) → ใช้ torch แบบ CPU-only และ cache โมเดลใน volume
 - `MIN_VECTOR_SCORE` ผิดค่า → ตัดผลที่ควรเจอ หรือไม่เคยว่างเลย · ปรับจาก eval ใน D5 ก่อนเดโม
 - 07 ส่งเอกสารไม่มี `## ` → chunk เดียวยาว ฝั่ง vector อ่านไม่ครบ · แจ้ง member5 ตั้งแต่ D4
+
+---
+
+## 10. ข้อเสนอ: ข้อมูลย้อนหลังจาก football-data.co.uk (รอทีมตกลง · ยังไม่ล็อก)
+
+> สถานะ: **ข้อเสนอเพื่อคุยกับทีม** · ต้องแก้ CONTRACT (§10.7) ก่อนเริ่มทำ · เสนอเป็นระดับ **Could** ไม่กระทบ Must
+> ตัวเลขทุกตัวในหัวข้อนี้วัดจากไฟล์จริงที่ดาวน์โหลดเมื่อ 26 ก.ย. 2026
+
+### 10.1 ปัญหาที่แก้
+
+KB ตอนนี้มี ① trivia (ความรู้ทั่วไป) ② ข้อมูลสดฤดูกาลปัจจุบันจาก 07 · **ไม่มีผลแข่งย้อนหลังแบบมีโครงสร้าง** คำถามแบบนี้จึงตอบจากคลังไม่ได้และถูกส่งไป `general_ai` ที่เดาได้
+- สถิติเจอกัน: "ปืนใหญ่เจอไก่ในลีกมากี่นัด ใครชนะมากกว่า"
+- ตารางจบฤดูกาล: "ฤดูกาล 2003/04 อาร์เซนอลได้กี่แต้ม" · "ปี 2016 ใครตกชั้น"
+- ผลงานทีมรายฤดูกาล: "ลิเวอร์พูลฤดูกาล 2019/20 แพ้กี่นัด"
+
+### 10.2 แหล่งข้อมูล
+
+| เรื่อง | รายละเอียด |
+|---|---|
+| ที่มา | `https://www.football-data.co.uk/mmz4281/<yyZZ>/E0.csv` (เช่น `0304` = 2003/04) · 1 ไฟล์ต่อฤดูกาล · ไม่ต้องใช้ key ไม่มีโควตา |
+| ช่วงที่ใช้ | **1993/94 – 2025/26 = 33 ฤดูกาล · 12,704 นัด · 51 สโมสร · 938 คู่ที่เคยเจอกัน** · 1993/94 และ 1994/95 มี 22 ทีม (462 นัด) |
+| คอลัมน์ที่เก็บ | `Date` `Time` `HomeTeam` `AwayTeam` `FTHG` `FTAG` `FTR` `HTHG` `HTAG` `HTR` · ตั้งแต่ 2000/01 เพิ่ม `Referee` `HS` `AS` `HST` `AST` `HF` `AF` `HC` `AC` `HY` `AY` `HR` `AR` |
+| คอลัมน์ที่ทิ้ง | ราคาต่อรองทั้งหมด (`B365*`, `Max*`, `Avg*`, `AH*` ฯลฯ ราว 100 คอลัมน์) · ไม่เก็บเลย ตรงกับ intent `out_of_scope` ที่ไม่ตอบเรื่องราคาพนัน |
+| สัญญาอนุญาต | ใช้ฟรีเพื่อการศึกษา ต้องให้เครดิตต้นทาง (ตรวจเงื่อนไขบนเว็บอีกครั้งก่อนเริ่ม) → ใส่ URL ของไฟล์ใน `Source.url` ทุกเอกสาร + เครดิตใน README / สไลด์ |
+| ข้อระวังในไฟล์ | วันที่มีทั้ง `dd/mm/yy` และ `dd/mm/yyyy` ปนกัน · ไฟล์ขึ้นต้นด้วย BOM · URL ตอบ 302 ก่อน (ต้องตาม redirect) · ไม่มีเลข matchweek |
+
+**ขอบเขตเวลา**: เอกสาร historical มีเฉพาะฤดูกาล **ก่อน** `current_season` เท่านั้น ฤดูกาลปัจจุบันเป็นของ football-data.org (หลัก) อย่างเดียว ไม่มีข้อมูลสองแหล่งแข่งกันในฤดูกาลเดียว · ฤดูกาลจบเมื่อไร 07 สร้างเอกสาร historical ของฤดูกาลนั้นเพิ่ม
+
+### 10.3 ใครทำอะไร
+
+| service | งาน |
+|---|---|
+| 07 football-data (member5) | ดาวน์โหลด CSV → ตาราง `football.historical_matches` ใน Postgres → สร้างเอกสาร 3 ชนิด (§10.4) → `POST /index/upsert` ครั้งละ ≤ 50 เอกสาร · รันด้วยคำสั่งเดียว (เช่น `make history`) ไม่ต้องอยู่ใน beat เพราะข้อมูลไม่เปลี่ยน |
+| 05 retrieval (sakda1306) | รับ `category` / `origin` ใหม่ · ตรวจรูปแบบ `doc_id` ใหม่ · ตัด chunk และ filter ใช้ของเดิมทั้งหมด (§10.5) |
+| 03 router (member2) | ส่ง `category: ["historical"]` ตามกฎใน §10.6 |
+| member6 | เติม golden set ย้อนหลังใน eval (§10.8) |
+
+เลือกให้ 07 ผลิตเอกสาร ไม่ใช่ 05 อ่าน CSV เอง: ตรงกับหลัก "ข้อมูลเดียว สองมุมมอง" ในแผนหัวข้อ 3 (Postgres ให้หน้าเว็บ + เอกสารให้ KB) และ 07 เป็นเจ้าของการ map ชื่อทีมอยู่แล้ว
+
+### 10.4 รูปแบบเอกสาร
+
+**ไม่ทำ 1 เอกสารต่อ 1 นัด**: 12,704 นัดจะกลายเป็น chunk มากกว่าคลัง trivia 6 เท่า และคำถามส่วนใหญ่ถามระดับฤดูกาลหรือคู่แข่ง ไม่ใช่นัดเดียว · รายละเอียดรายนัดยังอยู่ใน Postgres และอยู่ในรายการผลของเอกสารทีมรายฤดูกาล
+
+ทุกเอกสารเป็นภาษาอังกฤษ (CONTRACT §6) · ใช้ชื่อทางการจาก 07 (เช่น `Arsenal FC`) เพื่อให้ตรงกับชื่อที่การขยายชื่อเล่นต่อท้ายคำค้น · แบ่งหัวข้อด้วย `## ` ให้แต่ละ chunk สั้นพอสำหรับ MiniLM (~128 token, §3.2)
+
+| ชนิด (`topic`) | `doc_id` | จำนวน | chunk โดยประมาณ |
+|---|---|---|---|
+| ตารางจบฤดูกาล `season_table` | `hist-season-<season>` | 33 | ~6 ต่อเอกสาร → ~200 |
+| ทีมรายฤดูกาล `team_season` | `hist-team-<season>-<club_slug>` | 664 | ~4 → ~2,650 |
+| สถิติเจอกัน `head_to_head` | `hist-h2h-<club_slug_a>-<club_slug_b>` (เรียงตามตัวอักษร) | 938 | ≤ 3 → ≤ 2,800 |
+| **รวม** | | **1,635** | **~5,650** |
+
+`club_slug` คือ key ที่คงที่ในไฟล์ map ชื่อทีม (เช่น `arsenal`, `nottm-forest`) **ไม่ใช้ `team_id`** ใน doc_id เพราะสโมสรที่ยุบไปแล้ว (เช่น Wimbledon) อาจไม่มี id ใน football-data.org · doc_id จึงคงที่เสมอแม้บางทีมไม่มี id
+
+**ตัวอย่าง `hist-season-2003`** (ตัวเลขจริงจากไฟล์)
+```
+Premier League 2003/04 final table
+Champions: Arsenal FC, 90 points, unbeaten (26 W, 12 D, 0 L). Runners-up: Chelsea FC, 79 points.
+Relegated: Leicester City FC, Leeds United FC, Wolverhampton Wanderers FC.
+## Table: positions 1-5
+1. Arsenal FC  P38 W26 D12 L0 GF73 GA26 GD+47 Pts90
+2. Chelsea FC ...
+## Table: positions 6-10
+...
+## Season facts
+Total goals ..., most goals scored: ..., fewest conceded: ..., most red cards: ...
+```
+
+**ตัวอย่าง `hist-h2h-arsenal-tottenham`**
+```
+Arsenal FC vs Tottenham Hotspur FC — Premier League head-to-head, 1993/94 to 2025/26
+66 meetings: Arsenal FC won 29, draws 24, Tottenham Hotspur FC won 13.
+At Arsenal FC home: ... At Tottenham Hotspur FC home: ...
+## Recent meetings
+2025/26  22 Feb 2026  Tottenham Hotspur FC 1-4 Arsenal FC
+2025/26  23 Nov 2025  Arsenal FC 4-1 Tottenham Hotspur FC
+...
+## Biggest wins
+...
+```
+
+**ตัวอย่าง `hist-team-2003-arsenal`**: `c0` สรุป (อันดับ แต้ม W/D/L ประตูได้-เสีย) · `## Home and away` · `## Results August-December` · `## Results January-May` (รายการผลเรียงตามวันที่ พร้อมผู้ตัดสินตั้งแต่ 2000/01) · chunk รายการผลยาวราว 200 token ฝั่ง vector อ่านไม่ครบแต่ BM25 เห็นครบ (ข้อจำกัดเดียวกับ §3.2)
+
+**คำนวณตารางเองต้องแก้การตัดแต้ม** — CSV มีแค่ผลแข่ง ตารางที่คำนวณได้จึงผิดในฤดูกาลที่มีการตัดแต้ม ตัวอย่างจริง: 1996/97 ถ้าไม่หัก 3 แต้มของ Middlesbrough ตารางจะบอกว่า Sunderland อันดับ 19 และ Middlesbrough รอด ซึ่งผิด · 07 เก็บไฟล์ `point_deductions.json` ที่แก้ด้วยมือ (Middlesbrough 1996/97 −3 · Portsmouth 2009/10 −9 · Everton 2023/24 −8 · Nottingham Forest 2023/24 −4) และเขียนบอกในเอกสารว่าถูกหักแต้ม · มีเทสเทียบแชมป์และทีมตกชั้นครบ 33 ฤดูกาล (§10.8)
+
+### 10.5 metadata และตัวกรอง
+
+| field | `season_table` | `team_season` | `head_to_head` |
+|---|---|---|---|
+| `category` | `historical` | `historical` | `historical` |
+| `origin` | `football-data.co.uk` | `football-data.co.uk` | `football-data.co.uk` |
+| `season` | `"2003"` | `"2003"` | `null` (ครอบคลุมหลายฤดูกาล) |
+| `matchweek` | `null` | `null` | `null` |
+| `team_ids` | ทุกทีมในฤดูกาลที่มี id | `[id]` หรือ `[]` ถ้าไม่มี id | ทั้งสองทีมที่มี id |
+| `date` | `null` | `null` | `null` |
+| `fetched_at` | `null` | `null` | `null` |
+| `url` | URL ของ CSV ฤดูกาลนั้น | URL ของ CSV ฤดูกาลนั้น | `https://www.football-data.co.uk/englandm.php` |
+| `topic` | `season_table` | `team_season` | `head_to_head` |
+
+- **`fetched_at` = null**: เป็นข้อมูลนิ่ง ไม่ใช่ข้อมูลสด · ถ้าใส่เวลาดาวน์โหลด `data_as_of` ของคำตอบ (CONTRACT §1 `ChatResponse`) จะแสดงวันที่เก่าผิดความหมาย
+- **ตัวกรองใช้ของเดิมทั้งหมด ไม่เพิ่ม field ใน §4**:
+  - `category: ["historical"]` แยกออกจากข้อมูลสดได้ทันที
+  - `season` → ได้ตารางจบฤดูกาล + ทีมรายฤดูกาลของปีนั้น · เอกสาร h2h (season = null) ถูกตัดออก ซึ่งถูกต้อง เพราะคำถามที่ระบุฤดูกาลหาผลคู่นั้นได้จากรายการผลของทีม
+  - `team_ids` (ตรงตัวใดตัวหนึ่ง) → h2h ของคู่ที่ถามติดมาเสมอ แต่ติด h2h คู่อื่นของทีมเดียวกันมาด้วย ให้การจัดอันดับคัดออก · ถ้า eval พบว่า h2h คู่ที่ถามหลุดจาก top 5 บ่อย ค่อยเสนอ `team_ids_match: "all"` ใน §4 ภายหลัง
+  - `matchweek` / `date_from` / `date_to` → เอกสาร historical ไม่มีค่าเหล่านี้ จึงถูกตัดออกเสมอ (§4 ข้อ 2) router ต้องไม่ส่งมากับคำถามย้อนหลัง
+- 05 แก้โค้ดแค่: enum `category` / `origin` · รูปแบบ `doc_id` ใน `doc_ids.py` (`hist-season-\d{4}` · `hist-team-\d{4}-[a-z0-9-]+` · `hist-h2h-[a-z0-9-]+`) · `topic` เป็น field เสริมที่มีอยู่แล้ว (§3.3) ไม่ต้องแก้ SQLite
+
+### 10.6 การเลือกเส้นทางใน router (เสนอ — ไม่เพิ่ม intent)
+
+เพิ่ม intent ใหม่ต้องเทรน classifier ของ 04 ใหม่ จึงเสนอให้ใช้ intent เดิมแล้วปรับแค่ `filters.category`:
+
+| intent | เงื่อนไข | `filters.category` |
+|---|---|---|
+| `trivia_history` | – | `["trivia", "historical"]` (เดิม `["trivia"]`) |
+| `match_result` / `standings_stats` | ระบุฤดูกาลก่อน `current_season` หรือถามสถิติเจอกันระหว่างสองทีม | `["historical"]` + `season` (ถ้ามี) + `team_ids` · ไม่ส่ง `matchweek` / `date_*` |
+| `match_result` / `standings_stats` | ฤดูกาลปัจจุบัน / ไม่ระบุ | เหมือนเดิม |
+
+ลำดับถอย (CONTRACT §3) ใช้ของเดิม: คำถาม historical ที่ไม่เจอผ่าน `match_result` / `standings_stats` **ห้ามถอยไป `general_ai`** เพราะ LLM จะเดาสกอร์
+
+### 10.7 สิ่งที่ต้องแก้ใน CONTRACT (PR แยก ถ้าทีมตกลง)
+
+- §0 enum: `category` เพิ่ม `historical` · `origin` เพิ่ม `football-data.co.uk` · หน้าเว็บแสดงป้าย "ข้อมูลย้อนหลัง (football-data.co.uk)"
+- §1 `ChatResponse`: `data_as_of` ไม่นับเอกสาร `historical` (เพราะ `fetched_at` = null)
+- §3: ตาราง intent → `filters.category` ตาม §10.6
+- §6: ตารางรูปแบบ `doc_id` เพิ่ม 3 แถวตาม §10.4
+- Changelog: v1.x · field เดิมไม่ถูกลบหรือเปลี่ยนชื่อ
+
+### 10.8 การทดสอบและ eval
+
+- 07 unit: อ่านวันที่ทั้งสองรูปแบบ · ตัด BOM · ทิ้งคอลัมน์ราคา · **แชมป์และทีมตกชั้นที่คำนวณได้ต้องตรงกับรายการจริงครบ 33 ฤดูกาล** (จับการตัดแต้มที่ขาด เช่นกรณี 1996/97) · ทุกชื่อทีมใน CSV ต้องมีใน `club_slug` (ชื่อใหม่ที่ไม่รู้จัก → ล้มดัง ๆ ไม่ข้ามเงียบ)
+- 05 unit: รูปแบบ `doc_id` ใหม่ · filter `season` ตัด h2h ออก · filter `date_*` ตัด historical ออกทั้งหมด
+- eval: `eval/golden_history.jsonl` 20 ข้อ (ตารางจบฤดูกาล 7 · ทีมรายฤดูกาล 7 · h2h 6 · ครบ 4 แบบคำถามตาม §8) · รัน `golden_trivia` ซ้ำเพื่อยืนยันว่าการเพิ่ม `historical` ใน `trivia_history` ไม่ทำ hit@1 ของ trivia ตก
+
+### 10.9 ขนาดและความเร็ว
+
+- chunk ใน index จะเพิ่มจาก ~2,000 (trivia + ข้อมูลสด) เป็น **~7,700** เกินขนาดที่ตั้งเป้า p95 ≤ 300 ms ไว้ (~5,000 chunk, §4) → **ต้องวัด latency ซ้ำ** ก่อนเปิดใช้
+- ถ้าช้าเกิน ตัดตามลำดับนี้: ① รวมรายการผลใน `team_season` เป็น chunk เดียว ② h2h เฉพาะคู่ที่มีอย่างน้อยหนึ่งทีมอยู่ในฤดูกาลปัจจุบัน ③ เริ่มที่ 2000/01 (ช่วงที่มีสถิติครบ)
+- ingest ครั้งแรก: embed ~5,650 chunk บน CPU (คลัง trivia 1,953 chunk ใช้ ~24 วินาทีตอน rebuild) · 07 ส่งครั้งละ ≤ 50 เอกสารให้อยู่ใน timeout 30 วินาทีของ upsert · รันซ้ำไม่ embed ใหม่เพราะ `content_hash` ไม่เปลี่ยน (§3.3)
+
+### 10.10 คำถามที่ต้องตัดสินในที่ประชุม
+
+1. ทำหรือไม่ และจัดเป็น Could ตามที่เสนอหรือไม่ · member5 มีเวลาทำหลัง Must ของ 07 เสร็จหรือไม่
+2. เอาช่วง 1993/94–1999/2000 ด้วยหรือไม่ (มีแค่สกอร์ ไม่มีสถิติ) — เสนอว่า **เอา** เพราะคำถามยุคแรก เช่น แชมป์ Blackburn 1994/95 ตอบไม่ได้ถ้าไม่มี
+3. ใช้ intent เดิมตาม §10.6 หรือเพิ่ม intent ใหม่ (ต้องเทรน classifier ใหม่)
+4. ใส่ URL ของ CSV ใน `Source.url` เพื่อให้เครดิต — หน้าเว็บแสดงลิงก์นี้หรือไม่
