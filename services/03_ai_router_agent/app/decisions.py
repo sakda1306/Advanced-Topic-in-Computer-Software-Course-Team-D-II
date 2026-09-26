@@ -80,27 +80,30 @@ def _intent(query: str) -> str | None:
 def _rewrite(query: str, intent: str, names: list[str], filters: dict) -> str:
     if not re.search(r"[ก-๙]", query):
         return query
+    def keep_question(*parts: str) -> str:
+        return " ".join(part for part in (*parts, query.strip()) if part)
+
     teams = " ".join(names)
     season = filters.get("season", "")
     matchweek = f"matchweek {filters['matchweek']}" if "matchweek" in filters else ""
     dates = " ".join(str(filters[key]) for key in ("date_from", "date_to") if key in filters)
     if intent == "match_result":
         event = "previous match result" if "ก่อนหน้า" in query else "latest match result"
-        return " ".join(part for part in (teams, event, season, matchweek, dates) if part)
+        return keep_question(teams, event, season, matchweek, dates)
     if intent == "fixture_schedule":
-        return " ".join(part for part in (teams, "next Premier League fixture date opponent", season, matchweek, dates) if part)
+        return keep_question(teams, "next Premier League fixture date opponent", season, matchweek, dates)
     if intent == "standings_stats":
         topic = "top scorer" if "ดาวซัลโว" in query else "standings points ranking"
-        return " ".join(part for part in (teams, "Premier League", topic, season, matchweek) if part)
+        return keep_question(teams, "Premier League", topic, season, matchweek)
     if intent == "weekly_summary":
-        return " ".join(part for part in (teams, "Premier League weekly report summary", season, matchweek, dates) if part)
+        return keep_question(teams, "Premier League weekly report summary", season, matchweek, dates)
     if "บัลลงดอร์" in query:
         years = " ".join(re.findall(r"(?:19|20)\d{2}", query))
-        return " ".join(part for part in ("Ballon d'Or winner", years) if part)
+        return keep_question("Ballon d'Or winner", years)
     if "แชมป์" in query:
-        return " ".join(part for part in (teams, "Premier League title championship history count") if part)
+        return keep_question(teams, "Premier League title championship history count")
     years = " ".join(re.findall(r"(?:19|20)\d{2}", query))
-    return " ".join(part for part in (teams, "football trivia history", years) if part)
+    return keep_question(teams, "football trivia history", years)
 
 
 def enrich(decision: Decision, query: str, context: dict, history: list[dict], teams: TeamDirectory,

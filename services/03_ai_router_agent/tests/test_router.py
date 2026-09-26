@@ -1,4 +1,6 @@
+import asyncio
 import unittest
+from unittest.mock import patch
 
 from app.router import Router, UpstreamError
 from app.teams import TeamDirectory
@@ -61,7 +63,10 @@ class RouterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["engines_used"], ["retrieval", "generation"])
         self.assertEqual(self.clients.calls[0][0], "search")
         self.assertEqual(self.clients.calls[0][1]["filters"]["team_ids"], [57])
+        self.assertIn("เมื่อวานปืนใหญ่ชนะไหม", self.clients.calls[0][1]["query"])
         self.assertEqual(self.clients.calls[1][1]["mode"], "grounded")
+        self.assertEqual(self.clients.calls[1][1]["contexts"][0]["source"]["doc_id"], "match-1")
+        self.assertEqual(result["sources"][0]["doc_id"], "match-1")
         self.assertTrue(all(call[2] == "req-1" for call in self.clients.calls))
 
     async def test_empty_match_data_never_calls_general(self):
@@ -69,6 +74,19 @@ class RouterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["route"], "football_rag")
         self.assertEqual(result["trace"]["fallback"], "retrieval_empty")
         self.assertEqual([x[0] for x in self.clients.calls], ["search", "search"])
+
+    async def test_empty_match_data_reports_ingest_time_when_supplied(self):
+        request = {**self.request, "query": "เมื่อวานปืนใหญ่ชนะไหม",
+                   "context": {**self.request["context"], "last_ingest_at": "2026-09-26T09:00:00+07:00"}}
+        result = await self.router.route(request)
+        self.assertIn("2026-09-26T09:00:00+07:00", result["answer"])
+
+    async def test_scorer_uses_standings_without_general_fallback(self):
+        result = await self.run_query("ใครนำดาวซัลโวตอนนี้")
+        self.assertEqual(result["route"], "football_rag")
+        self.assertEqual(self.clients.calls[0][1]["filters"]["category"], ["standings"])
+        self.assertIn("ดาวซัลโว", self.clients.calls[0][1]["query"])
+        self.assertNotIn("general", [call[0] for call in self.clients.calls])
 
     async def test_empty_trivia_falls_back_to_general(self):
         result = await self.run_query("ใครได้บัลลงดอร์ปี 2008")
@@ -90,6 +108,16 @@ class RouterTests(unittest.IsolatedAsyncioTestCase):
         self.clients.classifier = {"data": {"label": "general_football", "score": 0.4}}
         result = await self.run_query("ฟุตบอลเล่นกี่คน")
         self.assertEqual(result["trace"]["decided_at_layer"], "llm")
+
+    async def test_llm_rewrite_keeps_original_question_in_search(self):
+        self.clients.classifier = {"data": {"label": "general_football", "score": 0.4}}
+        async def llm_decide(query, request_id):
+            return {"intent": "trivia_history", "confidence": 0.8,
+                    "rewritten_query": "Premier League history"}
+        self.clients.llm_decide = llm_decide
+        query = "นักเตะชื่อ กิตติ เคยยิงให้ลิเวอร์พูลกี่ประตู"
+        await self.run_query(query)
+        self.assertIn(query, self.clients.calls[1][1]["query"])
 
     async def test_prediction_501_returns_contract_message(self):
         async def unavailable(payload, request_id):
@@ -115,6 +143,15 @@ class RouterTests(unittest.IsolatedAsyncioTestCase):
         result = await self.run_query("อธิบายกฎล้ำหน้า")
         self.assertEqual(result["trace"]["fallback"], "generation_down")
         self.assertEqual(result["answer"], "ตอนนี้ระบบไม่ว่าง ลองใหม่อีกครั้งในอีกสักครู่")
+
+    async def test_timeout_returns_contract_fallback(self):
+        async def slow_search(payload, request_id):
+            await asyncio.sleep(0.1)
+        self.clients.search = slow_search
+        short_timeout = asyncio.timeout(0.001)
+        with patch("app.router.asyncio.timeout", return_value=short_timeout):
+            result = await self.run_query("เมื่อวานปืนใหญ่ชนะไหม")
+        self.assertEqual(result["trace"]["fallback"], "router_timeout")
 
 
 if __name__ == "__main__":

@@ -41,7 +41,13 @@ class DecisionTests(unittest.TestCase):
         self.assertEqual(result.filters["date_to"], "2026-09-25")
         self.assertNotIn("matchweek", result.filters)
         self.assertIn("Arsenal", result.rewritten_query)
-        self.assertNotRegex(result.rewritten_query, r"[ก-๙]")
+        self.assertIn("เมื่อวานปืนใหญ่ชนะไหม", result.rewritten_query)
+
+    def test_rewrite_keeps_person_and_question_condition(self):
+        query = "ใครยิงประตูชัยให้ลิเวอร์พูลในนัดชิงปี 2005"
+        result = decide(query, CONTEXT, [], TEAMS)
+        self.assertEqual(result.intent, "trivia_history")
+        self.assertIn(query, result.rewritten_query)
 
     def test_followup_reuses_recent_team(self):
         history = [{"role": "user", "content": "อาร์เซนอลนัดล่าสุดชนะไหม"},

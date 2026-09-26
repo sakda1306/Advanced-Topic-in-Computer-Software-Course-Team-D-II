@@ -72,7 +72,9 @@ class Router:
                         if raw.get("fallback"):
                             trace["fallback"] = raw["fallback"]
                         if decision and raw.get("rewritten_query") and decision.route == "football_rag":
-                            decision.rewritten_query = raw["rewritten_query"]
+                            rewritten = str(raw["rewritten_query"]).strip()
+                            decision.rewritten_query = (rewritten if query in rewritten else
+                                                        f"{rewritten} {query}".strip())
                     except (UpstreamError, ValueError, TypeError, asyncio.TimeoutError):
                         trace["fallback"] = "llm_unavailable"
                 if decision is None:
