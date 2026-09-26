@@ -7,6 +7,8 @@ Compose ที่ root ใช้บริการจริงตามแผน
 1. คัดลอก `.env.example` เป็น `.env` แล้วเปลี่ยนรหัสฐานข้อมูล, JWT, admin และ demo ใช้รหัสฐานข้อมูลที่ปลอดภัยสำหรับ URL เพราะค่านั้นอยู่ใน SQLAlchemy URL
 2. Linux/macOS: รัน `make up`, `make smoke`, `make warmup`, `make logs`, `make down` ที่ root ของ repo บน Windows PowerShell ใช้ `./deploy/tasks.ps1 up` และเปลี่ยนชื่องานตามต้องการ
 3. `warmup` ต้องมี `FOOTBALL_DATA_API_KEY` และจะดึง fixtures เท่านั้น ยังไม่สร้างหรือเผยแพร่รายงานประจำสัปดาห์ `smoke` ตรวจ health ของ 7 บริการและสิทธิ์ guest/demo/admin ยังไม่ได้พิสูจน์คำตอบครบ 5 route หรือความถูกต้องของข้อมูล
+
+   **หมายเหตุ:** `warmup` เป็นคำสั่งที่คนสั่งรันเอง แต่ job history และหน้า Admin Pipeline จะแสดง `triggered_by: "beat"` เพราะ CONTRACT §7 ยังรับเพียง `beat` หรือ `admin:<user_id>` รายการ `beat` จาก warmup จึงไม่ใช่หลักฐานว่า Celery beat เริ่มงานตามเวลา
 4. หลัง PR ของทุกบริการเข้า `develop` ให้ใช้ `pnpm test:integration` ของ Web กับชุดข้อมูลทดสอบที่ตรวจจากฐานข้อมูลจริง ตาม `services/01_web_app/INTEGRATION.md` บันทึก commit ของทั้ง 7 บริการ เวลา snapshot ของข้อมูล และผลผ่าน/ไม่ผ่านจริง ตรวจ 5 route, admin pipeline และวงจรรายงาน ก่อนสาธิตหรือรวมเข้า `main`
 
 ณ 2026-09-26 `develop` มีบริการ 02 และ 05 เท่านั้น โค้ดของ 01/03/06/07 ยังอยู่ใน PR ส่วนเจ้าของ 04 ยังใช้ `services/04_ai_model_selection` ซึ่งต้องย้ายเป็น `services/04_ai_engines` ตามแผนก่อน build ได้ เครื่อง Windows ที่ทำงานนี้ไม่มี Docker และ Make จึงยังไม่ได้รัน Compose จริง
