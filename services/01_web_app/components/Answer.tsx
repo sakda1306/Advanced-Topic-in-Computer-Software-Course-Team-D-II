@@ -144,6 +144,18 @@ export function Answer({
   const [error, setError] = useState<Error>();
   const [comment, setComment] = useState("");
   const prefix = surface + "-" + entry.id;
+  const hasSources = !!entry.sources?.length;
+  const fallback = entry.trace?.fallback;
+  const notice =
+    fallback === "retrieval_down"
+      ? "คลังข้อมูลไม่พร้อมใช้งานชั่วคราว จึงยังตรวจสอบข้อมูลจากคลังไม่ได้ กรุณาลองใหม่ภายหลัง"
+      : fallback === "retrieval_empty" && entry.route === "football_rag"
+        ? "ไม่พบข้อมูลที่ตรงกับคำถามในครั้งนี้ ลองระบุทีม ฤดูกาล หรือช่วงเวลาให้ชัดเจนขึ้น"
+        : entry.route === "general_ai"
+          ? "คำตอบจากความรู้ทั่วไป ไม่ได้ยืนยันด้วยข้อมูลในคลังฟุตบอล"
+          : entry.route === "football_rag" && !hasSources
+            ? "คำตอบนี้ไม่มีแหล่งอ้างอิงแนบมา จึงยังตรวจสอบกับข้อมูลในคลังจากหน้านี้ไม่ได้"
+            : null;
   async function rate(rating: number) {
     setSaving(true);
     setError(undefined);
@@ -167,6 +179,7 @@ export function Answer({
             sources={entry.sources}
             prefix={prefix}
           />
+          {notice && <p className="answer-notice">{notice}</p>}
           {!!entry.sources?.length && (
             <ol className="sources">
               {entry.sources.map((source) => (
@@ -200,7 +213,9 @@ export function Answer({
           <div className="answer-meta">
             {entry.route && (
               <span className="badge">
-                {routeLabels[entry.route] ?? entry.route}
+                {entry.route === "football_rag" && !hasSources
+                  ? "ค้นข้อมูลฟุตบอล"
+                  : (routeLabels[entry.route] ?? entry.route)}
               </span>
             )}
             {entry.data_as_of && (

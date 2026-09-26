@@ -11,9 +11,11 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run && node --test tests/integration-harness.test.mjs",
     "test:smoke": "node scripts/smoke.mjs",
-    "format:check": "prettier --check app components lib tests scripts/smoke.mjs"
+    "test:integration": "node scripts/integration.mjs",
+    "check": "pnpm test && pnpm typecheck && pnpm format:check && pnpm build",
+    "format:check": "prettier --check app components lib tests \"scripts/*.mjs\""
   },
   "dependencies": {
     "lucide-react": "0.468.0",

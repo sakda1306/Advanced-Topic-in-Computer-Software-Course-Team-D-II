@@ -8,9 +8,15 @@ export function ErrorBox({
   retry?: () => void;
 }) {
   if (!error) return null;
+  const message =
+    error instanceof ApiError && error.code === "INDEX_NOT_READY"
+      ? "คลังข้อมูลกำลังเตรียมพร้อม กรุณารอสักครู่แล้วลองใหม่"
+      : error instanceof ApiError && error.code === "RETRIEVAL_UNAVAILABLE"
+        ? "เชื่อมต่อคลังข้อมูลไม่ได้ชั่วคราว กรุณาลองใหม่ภายหลัง"
+        : error.message || "เชื่อมต่อไม่สำเร็จ";
   return (
     <div className="error-box" role="alert">
-      <strong>{error.message || "เชื่อมต่อไม่สำเร็จ"}</strong>
+      <strong>{message}</strong>
       {error instanceof ApiError && (
         <>
           <small>

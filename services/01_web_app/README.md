@@ -53,6 +53,8 @@ pnpm dev
 
 ตั้ง `API_INTERNAL_URL` ใน `.env.local` ให้ตรงกับ API Backend (ค่าเริ่มต้น `http://localhost:8000`) หากใช้ `pnpm build` แล้วต้องการเปิดผล build แบบ standalone ให้ใช้ Docker หรือ `pnpm start` สำหรับการรัน Next ในโฟลเดอร์พัฒนา
 
+บน Windows `pnpm build` สร้างผลสำหรับ `pnpm start` โดยไม่สร้าง standalone ที่ต้องใช้สิทธิ์ symlink ส่วน Linux/Docker ยังคงสร้าง standalone สำหรับ production ตามเดิม
+
 ## หน้าจอและพฤติกรรม
 
 | หน้า                             | ความสามารถ                                                                                                                                  |
@@ -102,3 +104,13 @@ try { node scripts/smoke.mjs --outage } finally { docker compose start api }
 ตรวจ atlas ด้วย Python ที่มี Pillow: `python scripts/validate-mascots.py`
 
 ดูผลที่รันจริงและขอบเขตการตรวจใน `TEST_RESULTS.md`
+
+## เตรียมรวมระบบตาม Contract v1.2
+
+ใช้ `pnpm check` เพื่อรัน tests, typecheck, format และ production build ตามลำดับสำหรับ CI ของงาน 01 ส่วน workflow จริงใน `.github/workflows` ต้องให้เจ้าของ Deploy จัดทำ
+
+หน้าแชทแยกคำอธิบาย `retrieval_empty` / `retrieval_down` ตาม trace และระบุเมื่อคำตอบไม่มีแหล่งอ้างอิงหรือมาจากความรู้ทั่วไป โดยไม่เปลี่ยนข้อความคำตอบจาก API หรือสร้างวันที่ขึ้นมาเอง การบังคับตอบเฉพาะข้อมูลในฐานข้อมูลต้องตกลงกับเจ้าของ Router/Retrieval/Generation ตาม Contract
+
+หน้า error รองรับ `INDEX_NOT_READY` (503) และ `RETRIEVAL_UNAVAILABLE` (502) พร้อม Request ID และการลองใหม่ในหน้าที่รองรับ ปัจจุบัน API 02 อาจแปลงรหัสแรกเป็นรหัสหลัง
+
+ใช้ `pnpm test:integration` สำหรับชุดทดสอบ HTTP ที่เตรียมไว้ให้ระบบจริง โดยกำหนดบัญชีทดสอบสองบัญชีและไฟล์ข้อเท็จจริงจากฐานข้อมูลก่อน ชุดนี้แยกจาก `test:smoke` ที่ใช้ stub อ่านวิธีตั้งค่า ขอบเขตการเปลี่ยนข้อมูล แผนตรวจเบราว์เซอร์ และงานที่รอทีมอื่นใน [INTEGRATION.md](INTEGRATION.md)

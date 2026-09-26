@@ -33,6 +33,62 @@ it("disables own role and account controls", async () => {
   ).toBeDisabled();
   expect(screen.getByRole("button", { name: "ระงับบัญชี" })).toBeDisabled();
 });
+it("treats rebuild acceptance as pending and does not call a nonexistent polling API", async () => {
+  const fetcher = vi.fn(async (input: RequestInfo | URL) =>
+    String(input).endsWith("/reindex")
+      ? new Response(JSON.stringify({ job_id: "rebuild-123" }), { status: 202 })
+      : new Response(
+          JSON.stringify({
+            documents: 3,
+            chunks: 3,
+            by_category: {},
+            index_version: "test",
+          }),
+        ),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  render(<KnowledgeBase />);
+  await screen.findByText("Index version: test");
+  await userEvent.click(
+    screen.getByRole("button", { name: "เริ่มสร้างดัชนี" }),
+  );
+  expect(await screen.findByRole("status")).toHaveTextContent(
+    "rebuild-123 · ยังไม่ใช่การยืนยันว่าเสร็จสิ้น",
+  );
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+it("shows index startup as retryable failure and recovers KB stats", async () => {
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          code: "INDEX_NOT_READY",
+          detail: "Starting",
+          request_id: "kb-start",
+        }),
+        { status: 503 },
+      ),
+    )
+    .mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          documents: 3,
+          chunks: 3,
+          by_category: {},
+          index_version: "ready",
+        }),
+      ),
+    );
+  vi.stubGlobal("fetch", fetcher);
+  render(<KnowledgeBase />);
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "คลังข้อมูลกำลังเตรียมพร้อม",
+  );
+  await userEvent.click(screen.getByRole("button", { name: "ลองใหม่" }));
+  expect(await screen.findByText("Index version: ready")).toBeInTheDocument();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
 it("does not delete a document after confirmation is cancelled", async () => {
   const fetcher = vi.fn(
     async () =>

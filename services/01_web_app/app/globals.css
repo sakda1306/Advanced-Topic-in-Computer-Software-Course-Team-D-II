@@ -593,6 +593,14 @@ summary {
   display: block;
   font-size: 11px;
 }
+.answer-notice {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  color: var(--muted);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
 .answer-meta {
   display: flex;
   flex-wrap: wrap;

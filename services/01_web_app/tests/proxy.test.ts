@@ -3,6 +3,34 @@ import { describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "../app/api/[...path]/route";
 describe("web API proxy", () => {
+  it("preserves Contract v1.2 index readiness errors without turning them into empty data", async () => {
+    const problem = {
+      status: 503,
+      code: "INDEX_NOT_READY",
+      detail: "Index is loading",
+      request_id: "index-starting",
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(problem), {
+          status: 503,
+          headers: {
+            "content-type": "application/problem+json",
+            "x-request-id": "index-starting",
+          },
+        }),
+      ),
+    );
+    const response = await POST(
+      new NextRequest("http://localhost/api/admin/kb/reindex", {
+        method: "POST",
+      }),
+      { params: { path: ["admin", "kb", "reindex"] } },
+    );
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual(problem);
+  });
   it("forwards cookies and creates a correlated request ID", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ ok: true }), {
