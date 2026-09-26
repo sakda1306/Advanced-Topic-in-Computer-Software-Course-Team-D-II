@@ -10,7 +10,7 @@ from fastapi import APIRouter, Query
 from app.api.deps import AdminUser, DbDep
 from app.schemas.admin import AdminUser as AdminUserOut
 from app.schemas.admin import UserPatch
-from app.schemas.common import Page
+from app.schemas.common import Page, Text
 from app.services import users as user_service
 
 router = APIRouter(prefix="/users")
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/users")
 @router.get("")
 async def list_users(
     db: DbDep,
-    q: Annotated[str | None, Query(max_length=64)] = None,
+    q: Annotated[Text | None, Query(max_length=64)] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     cursor: Annotated[str | None, Query(max_length=200)] = None,
 ) -> Page[AdminUserOut]:
