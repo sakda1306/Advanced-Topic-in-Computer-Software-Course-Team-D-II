@@ -24,26 +24,35 @@ export function ClubOverview() {
   const matches = (fixtures.data?.matches ?? []).filter(
     (m) => m.home.team_id === team.teamId || m.away.team_id === team.teamId,
   );
-  const next = matches
-    .filter(
-      (m) =>
-        m.status === "SCHEDULED" && new Date(m.kickoff).getTime() >= Date.now(),
-    )
+  const now = Date.now();
+  const valid = matches.filter((m) => Number.isFinite(Date.parse(m.kickoff)));
+  const latest = (items: Match[]) =>
+    [...items].sort((a, b) => Date.parse(b.kickoff) - Date.parse(a.kickoff))[0];
+  const live = latest(valid.filter((m) => m.status === "LIVE"));
+  const next = valid
+    .filter((m) => m.status === "SCHEDULED" && Date.parse(m.kickoff) >= now)
     .sort((a, b) => Date.parse(a.kickoff) - Date.parse(b.kickoff))[0];
-  const match =
-    next ??
-    [...matches].sort(
-      (a, b) => Date.parse(b.kickoff) - Date.parse(a.kickoff),
-    )[0];
+  const finished = latest(
+    valid.filter(
+      (m) => m.status === "FINISHED" && Date.parse(m.kickoff) <= now,
+    ),
+  );
+  const match = live ?? next ?? finished;
   const rows = [...(standings.data?.rows ?? [])]
     .sort((a, b) => a.position - b.position)
     .slice(0, 5);
   return (
     <>
       <section className="panel match-preview companion-card">
-        <h2>{next ? "NEXT MATCH" : "MATCH CENTRE"}</h2>
+        <h2>{live ? "LIVE MATCH" : next ? "NEXT MATCH" : "MATCH CENTRE"}</h2>
         <small>
-          {next ? "ศึกถัดไปที่กำลังรออยู่" : "การแข่งขันล่าสุดที่มีข้อมูล"}
+          {live
+            ? "กำลังแข่งขัน"
+            : next
+              ? "นัดถัดไป"
+              : finished
+                ? "ผลการแข่งขันล่าสุด"
+                : "การแข่งขันของทีมคุณ"}
         </small>
         {fixtures.loading ? (
           <Loading />
@@ -61,7 +70,7 @@ export function ClubOverview() {
               </strong>
             </span>
             <b>
-              {match.status === "FINISHED"
+              {["FINISHED", "LIVE"].includes(match.status)
                 ? `${match.score.home ?? "—"} : ${match.score.away ?? "—"}`
                 : "VS"}
             </b>
@@ -73,7 +82,7 @@ export function ClubOverview() {
             </span>
           </Link>
         ) : (
-          <p className="match-empty">ยังไม่มีโปรแกรมของทีมนี้</p>
+          <p className="match-empty">ยังไม่มีการแข่งขันที่พร้อมแสดง</p>
         )}
         {match && <small>{dateTime(match.kickoff)}</small>}
       </section>

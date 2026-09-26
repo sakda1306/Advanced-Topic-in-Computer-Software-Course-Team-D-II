@@ -202,6 +202,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </div>
               </header>
               {app.teamBusy && <p role="status">กำลังบันทึกทีมที่เชียร์…</p>}
+              <ErrorBox error={app.teamError} />
               <main id="content" key={app.user.id}>
                 {adminPage && app.user.role !== "admin" ? (
                   <div className="panel empty">

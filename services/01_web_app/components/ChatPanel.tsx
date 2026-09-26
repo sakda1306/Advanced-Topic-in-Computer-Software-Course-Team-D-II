@@ -47,7 +47,17 @@ export function ChatPanel({ surface = "main" }: { surface?: string }) {
         )}
         <div ref={end} />
       </div>
-      <ErrorBox error={app.error} />
+      <ErrorBox
+        error={app.error}
+        retry={
+          app.historyTarget && !app.historyLoading
+            ? () => void app.selectSession(app.historyTarget!)
+            : undefined
+        }
+      />
+      {app.historyTarget && !app.historyLoading && (
+        <button onClick={app.newChat}>เริ่มแชทใหม่</button>
+      )}
       <form
         className="chat-compose"
         onSubmit={(event) => {
@@ -84,6 +94,7 @@ export function ChatPanel({ surface = "main" }: { surface?: string }) {
             app.pending ||
             app.teamBusy ||
             app.historyLoading ||
+            !!app.historyTarget ||
             !app.draft.trim()
           }
         >

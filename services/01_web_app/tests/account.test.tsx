@@ -167,3 +167,133 @@ it("sample prompt fills the composer and focuses it", async () => {
     screen.getByRole("textbox", { name: "ถามเรื่องฟุตบอล" }),
   ).toHaveFocus();
 });
+it.each([200, 502, 504, "network"])(
+  "serializes login behind logout (%s) and deduplicates logout",
+  async (status) => {
+    const fetcher = await setup();
+    let release!: () => void;
+    fetcher.mockImplementationOnce(
+      () =>
+        new Promise((resolve, reject) => {
+          release = () =>
+            status === "network"
+              ? reject(new TypeError("offline"))
+              : resolve(
+                  json(
+                    { ok: status === 200, detail: "logout failed" },
+                    Number(status),
+                  ),
+                );
+        }),
+    );
+    let leaving!: Promise<void>, entering!: Promise<void>;
+    act(() => {
+      leaving = app.logout();
+      expect(app.logout()).toBe(leaving);
+      entering = app.login("B", "pw");
+    });
+    expect(app.loggingOut).toBe(true);
+    expect(
+      fetcher.mock.calls.filter(([path]) => path === "/api/auth/login"),
+    ).toHaveLength(0);
+    await act(async () => {
+      release();
+      await leaving;
+      await entering;
+    });
+    expect(app.user?.id).toBe("B");
+    expect(app.loggingOut).toBe(false);
+    expect(navigation.replace).toHaveBeenLastCalledWith("/");
+    expect(
+      fetcher.mock.calls.filter(([path]) => path === "/api/auth/logout"),
+    ).toHaveLength(1);
+  },
+);
+it("clears a missing history session and sends the next question with a null session", async () => {
+  const fetcher = await setup();
+  fetcher.mockResolvedValueOnce(json({ detail: "missing" }, 404));
+  await act(async () => {
+    await app.selectSession("missing");
+  });
+  expect(app.sessionId).toBeNull();
+  expect(app.historyTarget).toBeNull();
+  expect(app.error?.message).toMatch(/ไม่พบบทสนทนา/);
+  await act(async () => {
+    await app.sendQuestion("fresh");
+  });
+  const call = fetcher.mock.calls.find(([path]) => path === "/api/chat")!;
+  expect(JSON.parse(String(call[1]?.body)).session_id).toBeNull();
+});
+it("blocks sending after transient history failure and resumes after retry", async () => {
+  const fetcher = await setup();
+  fetcher.mockResolvedValueOnce(json({ detail: "temporary" }, 502));
+  await act(async () => {
+    await app.selectSession("old");
+  });
+  expect(app.historyTarget).toBe("old");
+  expect(await app.sendQuestion("blocked")).toBe(false);
+  expect(fetcher.mock.calls.some(([path]) => path === "/api/chat")).toBe(false);
+  expect(screen.getByRole("button", { name: "ลองใหม่" })).toBeEnabled();
+  fetcher.mockResolvedValueOnce(json({ messages: [] }));
+  await act(async () => {
+    await app.selectSession("old");
+  });
+  expect(app.historyTarget).toBeNull();
+  expect(app.sessionId).toBe("old");
+  await act(async () => {
+    await app.sendQuestion("continue");
+  });
+  expect(
+    JSON.parse(
+      String(
+        fetcher.mock.calls.find(([path]) => path === "/api/chat")![1]?.body,
+      ),
+    ).session_id,
+  ).toBe("old");
+});
+it("ignores late history after starting a new conversation", async () => {
+  const fetcher = await setup();
+  let resolve!: (response: Response) => void;
+  fetcher.mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      }),
+  );
+  let loading!: Promise<void>;
+  act(() => {
+    loading = app.selectSession("old");
+  });
+  act(() => app.newChat());
+  await act(async () => {
+    resolve(
+      json({
+        messages: [{ message_id: "secret", role: "assistant", content: "old" }],
+      }),
+    );
+    await loading;
+  });
+  expect(app.sessionId).toBeNull();
+  expect(app.entries).toEqual([]);
+  expect(app.historyTarget).toBeNull();
+});
+it("preserves club and conversation when saving the club fails and clears the error on success", async () => {
+  const fetcher = await setup();
+  await act(async () => {
+    await app.sendQuestion("keep");
+  });
+  fetcher.mockResolvedValueOnce(json({ detail: "cannot save club" }, 502));
+  await act(async () => {
+    await app.changeTeam("chelsea");
+  });
+  expect(app.team.key).toBe("manchester-united");
+  expect(app.entries).toHaveLength(2);
+  expect(app.teamError?.message).toBe("cannot save club");
+  expect(app.error).toBeUndefined();
+  await act(async () => {
+    await app.changeTeam("chelsea");
+  });
+  expect(app.team.key).toBe("chelsea");
+  expect(app.entries).toEqual([]);
+  expect(app.teamError).toBeUndefined();
+});

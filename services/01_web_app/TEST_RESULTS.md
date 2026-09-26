@@ -10,10 +10,10 @@
 
 | คำสั่ง | ผล |
 | --- | --- |
-| `pnpm test` | ผ่าน 25 tests ใน 9 files หลังปรับ Club Edition |
+| `pnpm test` | ผ่าน 41 tests ใน 10 files หลังแก้ account/history/team/match regressions |
 | `pnpm typecheck` | ผ่าน |
 | `pnpm format:check` | ผ่าน |
-| `docker compose build web` | ผ่าน production build; การตรวจรอบสุดท้ายใช้ build cache |
+| `docker compose build web` | ผ่าน production build |
 | `docker compose up -d --wait` | เริ่มระบบสำเร็จ |
 | `docker compose up -d --no-deps --force-recreate --wait web` | สร้างเว็บ container ใหม่จาก image ล่าสุด และ health check ผ่าน |
 | `pnpm test:smoke` | ผ่าน 23 integration checks |
@@ -32,6 +32,10 @@
 - มาสคอสใช้งานด้วยคีย์บอร์ดและจำกัดตำแหน่งให้อยู่ใน viewport
 - Football filters, รายงานว่าง และข้อมูล match ที่เป็น null
 - Club Edition: เลือกแมตช์ถัดไปของทีมที่ถูกต้อง และเรียงอันดับใน League Snapshot
+- Logout/Login: รอ Logout จบก่อนส่ง Login และรวมการกด Logout ซ้ำเป็นคำขอเดียว ทดสอบ success, 502, 504 และ network failure; หน้า Login ปิดปุ่มและแสดงสถานะระหว่างรอ
+- History: ล้าง session ที่ตอบ 404; บล็อกการส่งเมื่อโหลดล้มเหลวชั่วคราวและเปิดให้ลองใหม่; คำตอบ history เก่าไม่เขียนทับแชทใหม่
+- Team preference: บันทึกไม่สำเร็จยังคงทีมและบทสนทนาเดิม; ข้อผิดพลาดแสดงบนหน้าแรก, Football และ Admin แม้ไม่มีมาสคอสเปิดอยู่
+- Match preview: LIVE มาก่อน SCHEDULED ในอนาคต แล้วจึง FINISHED ล่าสุด; ข้าม POSTPONED, CANCELLED และวันที่ไม่ถูกต้อง
 - Admin permissions, job polling, ยืนยันการเปลี่ยนแปลง, ป้องกันการเผยแพร่ร่างที่ยังไม่บันทึก
 - HTTP ผ่าน Docker: 11 page routes, mascot assets, login/logout, favorite team, chat/history/feedback, football, admin statistics, pipeline, reports, logs/audit, users และ KB
 - จงใจจำลอง router ล้มเหลวและ timeout เพื่อยืนยัน HTTP 502/504

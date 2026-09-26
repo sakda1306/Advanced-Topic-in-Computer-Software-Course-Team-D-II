@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import {
+  ApiError,
   api,
   body,
   accountEpoch,
@@ -25,6 +26,11 @@ function useAppState() {
   const [checked, setChecked] = useState(false);
   const [authError, setAuthError] = useState<Error>();
   const [teamKey, setTeamKey] = useState<TeamKey>(teams[0].key);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const logoutTask = useRef<Promise<void> | null>(null);
+  const [teamError, setTeamError] = useState<Error>();
+  const [historyTarget, setHistoryTarget] = useState<string | null>(null);
+  const historyTargetRef = useRef<string | null>(null);
   const [teamBusy, setTeamBusy] = useState(false);
   const [entries, setEntries] = useState<ChatEntry[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -53,7 +59,10 @@ function useAppState() {
     setSessionId(null);
     setPending(false);
     setHistoryLoading(false);
+    historyTargetRef.current = null;
+    setHistoryTarget(null);
     setTeamBusy(false);
+    setTeamError(undefined);
     setDraft("");
     setError(undefined);
     setHistoryError(undefined);
@@ -88,6 +97,7 @@ function useAppState() {
 
   const checkAuth = useCallback(
     async (signal?: AbortSignal) => {
+      if (logoutTask.current) return;
       setAuthError(undefined);
       try {
         const data = await api<{ user: User }>("/auth/me", { signal });
@@ -120,6 +130,7 @@ function useAppState() {
   }, [checkAuth, clearAccount, router]);
 
   async function login(username: string, password: string) {
+    if (logoutTask.current) await logoutTask.current;
     const data = await api<{ user: User }>(
       "/auth/login",
       body({ username, password }),
@@ -127,21 +138,31 @@ function useAppState() {
     acceptUser(data.user);
     router.replace("/");
   }
-  async function logout() {
+  function logout(): Promise<void> {
+    if (logoutTask.current) return logoutTask.current;
     clearAccount();
-    try {
-      await api("/auth/logout", { method: "POST" });
-    } catch (error) {
-      if (!isCancelled(error)) setAuthError(error as Error);
-    } finally {
-      router.replace("/login");
-    }
+    setLoggingOut(true);
+    const task = (async () => {
+      try {
+        await api("/auth/logout", { method: "POST" });
+      } catch (error) {
+        if (!isCancelled(error)) setAuthError(error as Error);
+      } finally {
+        router.replace("/login");
+        setLoggingOut(false);
+        logoutTask.current = null;
+      }
+    })();
+    logoutTask.current = task;
+    return task;
   }
   function newChat() {
     conversation.current++;
     busy.current = false;
     setPending(false);
     setHistoryLoading(false);
+    historyTargetRef.current = null;
+    setHistoryTarget(null);
     setEntries([]);
     setSessionId(null);
     setDraft("");
@@ -155,18 +176,32 @@ function useAppState() {
     setError(undefined);
     setEntries([]);
     setDraft("");
-    setSessionId(id);
+    setSessionId(null);
+    historyTargetRef.current = id;
+    setHistoryTarget(id);
     try {
       const data = await api<{
         messages: (Omit<ChatEntry, "id"> & { message_id: string })[];
       }>("/history/" + encodeURIComponent(id));
-      if (ticket === conversation.current)
+      if (ticket === conversation.current) {
+        setSessionId(id);
+        historyTargetRef.current = null;
+        setHistoryTarget(null);
         setEntries(
           data.messages.map((item) => ({ ...item, id: item.message_id })),
         );
+      }
     } catch (error) {
-      if (ticket === conversation.current && !isCancelled(error))
-        setError(error as Error);
+      if (ticket === conversation.current && !isCancelled(error)) {
+        if (error instanceof ApiError && error.status === 404) {
+          historyTargetRef.current = null;
+          setHistoryTarget(null);
+          setError(
+            new Error("ไม่พบบทสนทนานี้ กรุณาเริ่มแชทใหม่หรือเลือกบทสนทนาอื่น"),
+          );
+          void refreshSessions();
+        } else setError(error as Error);
+      }
     } finally {
       if (ticket === conversation.current) setHistoryLoading(false);
     }
@@ -186,7 +221,7 @@ function useAppState() {
     const epoch = accountEpoch();
     preferenceBusy.current = true;
     setTeamBusy(true);
-    setError(undefined);
+    setTeamError(undefined);
     try {
       const data = await api<{ user: User }>("/me/preferences", {
         method: "PATCH",
@@ -197,7 +232,7 @@ function useAppState() {
       newChat();
     } catch (error) {
       if (epoch === accountEpoch() && !isCancelled(error))
-        setError(error as Error);
+        setTeamError(error as Error);
     } finally {
       if (epoch === accountEpoch()) {
         preferenceBusy.current = false;
@@ -211,7 +246,8 @@ function useAppState() {
       !user ||
       busy.current ||
       preferenceBusy.current ||
-      historyLoading ||
+      historyTargetRef.current !== null ||
+      loggingOut ||
       !message ||
       message.length > 2000
     )
@@ -291,6 +327,8 @@ function useAppState() {
     checkAuth,
     team,
     teamBusy,
+    teamError,
+    loggingOut,
     changeTeam,
     login,
     logout,
@@ -301,6 +339,7 @@ function useAppState() {
     newChat,
     pending,
     historyLoading,
+    historyTarget,
     error,
     historyError,
     refreshSessions,

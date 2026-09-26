@@ -54,6 +54,9 @@ export default function Login() {
       </section>
       <section className="login-form-area">
         <div className="login-form">
+          {app.loggingOut && (
+            <p role="status">กำลังออกจากระบบ กรุณารอสักครู่</p>
+          )}
           <span className="eyebrow">WELCOME TO PITCHSIDE</span>
           <h2>ยินดีต้อนรับกลับ</h2>
           <p className="muted">เข้าสู่ระบบ PitchSide</p>
@@ -111,9 +114,13 @@ export default function Login() {
               <ErrorBox error={error ?? app.authError} />
               <button
                 className="primary login-submit"
-                disabled={pending || !app.checked}
+                disabled={pending || app.loggingOut || !app.checked}
               >
-                {pending ? "กำลังเข้าสู่ระบบ…" : "เข้าสู่ระบบ"}
+                {app.loggingOut
+                  ? "กำลังออกจากระบบ…"
+                  : pending
+                    ? "กำลังเข้าสู่ระบบ…"
+                    : "เข้าสู่ระบบ"}
                 <ArrowRight size={20} />
               </button>
             </form>
