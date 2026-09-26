@@ -1,4 +1,4 @@
-# CONTRACT.md — ข้อตกลง API ระหว่าง service · ผู้ช่วยฟุตบอล · v1.2
+# CONTRACT.md — ข้อตกลง API ระหว่าง service · ผู้ช่วยฟุตบอล · v1.3
 
 > **กฎเหล็ก**: แก้ไฟล์นี้ได้ผ่าน PR เท่านั้น ต้องได้ approve จากหัวหน้า (sakda1306) + เจ้าของ service ทั้งสองฝั่งที่เกี่ยวข้อง
 > เพิ่ม field ใหม่แบบ optional ได้ (ไม่ทำให้คนอื่นพัง) แต่ **ห้ามลบ / เปลี่ยนชื่อ / เปลี่ยนความหมาย field** โดยไม่ bump version และแจ้งในกลุ่ม
@@ -255,7 +255,8 @@ auth ใช้ httpOnly cookie ชื่อ `access_token` (JWT HS256, อาย
   "query": "ข้อความผู้ใช้",
   "history": [ HistoryMessage ],     // ข้อความล่าสุดไม่เกิน 10 รายการ เรียง เก่า → ใหม่ (api ตัดจาก Message เหลือ role + content)
   "context": {                        // api ได้มาจาก GET /football/status ของ 07 (cache 5 นาที)
-    "season": "2026", "current_matchweek": 5, "now": "2026-09-22T10:00:00+07:00"
+    "season": "2026", "current_matchweek": 5, "now": "2026-09-22T10:00:00+07:00",
+    "last_ingest_at": "2026-09-22T09:30:00+07:00"   // v1.3 optional · ค่าเดียวกับ /football/status · null เมื่อ 07 ล่มหรือยังไม่เคย ingest
   }
 }
 
@@ -331,7 +332,7 @@ auth ใช้ httpOnly cookie ชื่อ `access_token` (JWT HS256, อาย
 1. 05 คืน `chunks` ว่าง **ด้วย filter** → ค้นซ้ำ 1 ครั้งโดยตัด `matchweek`/`date_*` ออก (เก็บ `category` + `team_ids`)
 2. ยังว่าง หรือ 05 ล่ม
    - intent `trivia_history` → ถอยไป `general_ai` และต่อท้าย "คำตอบนี้มาจากความรู้ทั่วไป ไม่ได้อ้างอิงคลังข้อมูล"
-   - intent ข้อมูลแมตช์ (`match_result`, `fixture_schedule`, `standings_stats`, `weekly_summary`) → **ห้ามถอยไป `general_ai`** (LLM จะเดาผล) ตอบว่า "ยังไม่มีข้อมูลของช่วงนี้ในระบบ ข้อมูลล่าสุด ณ `<last_ingest_at>`" พร้อม `trace.fallback`
+   - intent ข้อมูลแมตช์ (`match_result`, `fixture_schedule`, `standings_stats`, `weekly_summary`) → **ห้ามถอยไป `general_ai`** (LLM จะเดาผล) ตอบว่า "ยังไม่มีข้อมูลของช่วงนี้ในระบบ ข้อมูลล่าสุด ณ `<context.last_ingest_at>`" พร้อม `trace.fallback` · ถ้า `context.last_ingest_at` เป็น null หรือไม่มี field (api รุ่นก่อน v1.3) ให้ตัดท่อน "ข้อมูลล่าสุด ณ ..." ออก ห้ามเดาเวลา
 
 ## 4. router → retrieval
 
@@ -581,3 +582,4 @@ body `{request_id, category?}` (ไม่ใส่ = ทั้งหมด) → 
 | v1.0 | (D1) | ฉบับแรก |
 | v1.1 | (D1) | **เพิ่มระบบ Admin** — §1.1 ใหม่ (`/api/admin/*`, สิทธิ์ `role=admin`, audit, error code ใหม่) · ย้าย `GET /api/stats` → `GET /api/admin/stats` · รายงานประจำสัปดาห์มีสถานะ `draft → published → unpublished` และเข้า KB เมื่อ publish เท่านั้น (+ env `REPORT_AUTO_PUBLISH`) · §6 เพิ่ม `POST /index/rebuild` · §7 เพิ่ม `GET /jobs`, endpoint จัดการรายงาน, `triggered_by` · field เดิมไม่ถูกลบ/เปลี่ยนชื่อ ยกเว้น path `/api/stats` ที่ย้าย |
 | v1.2 | (D4) | **เพิ่มเท่านั้น ไม่เปลี่ยน field เดิม** — §4 / §6 เพิ่ม error `INDEX_NOT_READY` (503) · §6 ระบุขอบเขตของ upsert (1–100 เอกสาร, 5 MB, 422 ทั้งคำขอ) · §7 เพิ่ม retrieval เป็นผู้เรียก `GET /football/teams` · §4 ฝั่ง vector ของ 05 ใช้ `query` แทน `query_original` field และความหมายต่อผู้เรียกเหมือนเดิม — router ต้องส่ง `query` เป็นอังกฤษที่เขียนใหม่แล้ว · **มีผลเมื่อ PR #10 merge** (ก่อนนั้นโค้ดยัง embed `query_original`) · ตัวเลขที่ใช้ตัดสิน (ชุด match hit@1 0.70 → 0.90) วัดกับเอกสาร**จำลอง** 20 คำถามและคำอังกฤษที่เตรียมไว้ ไม่ใช่เอกสารของ 07 หรือคำที่ router เขียนจริง ต้องวัดซ้ำหลังต่อระบบ · §6 upsert / delete / rebuild ตอบ `INDEX_NOT_READY` ตอน index ยังโหลดไม่เสร็จ · §6 job ของ rebuild หายเมื่อ restart |
+| v1.3 | (26 ก.ย.) | **เพิ่มเท่านั้น ไม่เปลี่ยน field เดิม** — §2 `RouteRequest.context` เพิ่ม `last_ingest_at` (optional, null ได้) ที่ api คัดจาก `GET /football/status` · §3 ข้อความ fallback ของ intent ข้อมูลแมตช์อ่านเวลาจาก `context.last_ingest_at` และตัดท่อนเวลาออกเมื่อเป็น null · เดิม §3 อ้าง `<last_ingest_at>` แต่ §2 ไม่ได้ส่งค่านี้ให้ router |
