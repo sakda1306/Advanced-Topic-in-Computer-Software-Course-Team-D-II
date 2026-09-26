@@ -98,7 +98,7 @@ ruff check . && ruff format --check .
 
 - **บันทึก log หลังตอบ** — `/api/chat` สร้าง `message_id` แล้วตอบทันที ส่วนการเขียนข้อความ/log ลง DB ทำใน background task · ระหว่างนั้น id ถูกทำเครื่องหมาย "pending" ใน Redis ถ้า feedback มาก่อน api รอได้ 3 วิ แล้วตอบ 409 · ถ้า id ไม่เคยมีจริงตอบ 404 ทันที
 - **session ใหม่** ถูกสร้างเมื่อ router ตอบสำเร็จเท่านั้น คำถามแรกที่ล้มจึงไม่ทิ้งแชทว่างไว้ในรายการ
-- **context ให้ router** มาจาก 07 `/football/status` (cache 5 นาที) · ถ้า 07 ล่ม แชทยังใช้ได้ โดยใช้ฤดูกาลจากปฏิทินและ `current_matchweek: null`
+- **context ให้ router** มาจาก 07 `/football/status` (cache 5 นาที) · ส่ง `last_ingest_at` ต่อให้ router ใช้ในข้อความ fallback (CONTRACT v1.3) · ถ้า 07 ล่ม แชทยังใช้ได้ โดยใช้ฤดูกาลจากปฏิทิน และ `current_matchweek` / `last_ingest_at` เป็น `null`
 - **สิทธิ์ admin** ตรวจที่ api ทุกครั้งจาก DB (ไม่เชื่อ role ใน token) เปลี่ยน role / ระงับบัญชีจึงมีผลทันที
 - **error จาก 07** ที่หน้าเว็บต้องเห็น (`JOB_ALREADY_RUNNING`, `REPORT_NOT_EDITABLE`, `NOT_FOUND`, …) ส่งต่อด้วย code เดิม ที่เหลือเป็น 502 `FOOTBALL_DATA_UNAVAILABLE`
 - **`triggered_by` / `edited_by`** api ใส่เองเป็น `admin:<user_id>` หรือ `beat` ไม่รับจากหน้าเว็บ

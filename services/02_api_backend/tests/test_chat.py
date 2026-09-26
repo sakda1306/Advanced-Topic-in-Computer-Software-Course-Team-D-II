@@ -70,6 +70,7 @@ async def test_request_to_router_matches_contract(
     assert sent["context"]["season"] == "2026"
     assert sent["context"]["current_matchweek"] == 6
     assert sent["context"]["now"].endswith("+07:00")
+    assert sent["context"]["last_ingest_at"] == "2026-09-21T09:00:00+07:00"
 
 
 async def test_follow_up_sends_history(
@@ -175,6 +176,7 @@ async def test_chat_works_when_football_data_is_down(
     await ask(demo, "เมื่อวานปืนใหญ่ชนะไหม")
     context = recording_router.requests[-1]["context"]
     assert context["current_matchweek"] is None
+    assert context["last_ingest_at"] is None
     assert len(context["season"]) == 4
 
 
