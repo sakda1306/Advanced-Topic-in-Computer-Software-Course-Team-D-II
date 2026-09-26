@@ -2,10 +2,10 @@ name: 04-engines
 on:
   pull_request:
     branches: [develop, main]
-    paths: ["services/04_ai_engines/**", ".github/workflows/engines-04.yml"]
+    paths: ["services/04_ai_engines/**"]
   push:
     branches: [develop, main]
-    paths: ["services/04_ai_engines/**", ".github/workflows/engines-04.yml"]
+    paths: ["services/04_ai_engines/**"]
   workflow_dispatch:
 permissions:
   contents: read

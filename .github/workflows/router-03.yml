@@ -2,10 +2,10 @@ name: 03-router
 on:
   pull_request:
     branches: [develop, main]
-    paths: ["services/03_ai_router_agent/**", ".github/workflows/router-03.yml"]
+    paths: ["services/03_ai_router_agent/**"]
   push:
     branches: [develop, main]
-    paths: ["services/03_ai_router_agent/**", ".github/workflows/router-03.yml"]
+    paths: ["services/03_ai_router_agent/**"]
   workflow_dispatch:
 permissions:
   contents: read

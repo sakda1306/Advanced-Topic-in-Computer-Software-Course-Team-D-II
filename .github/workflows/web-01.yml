@@ -2,10 +2,10 @@ name: 01-web
 on:
   pull_request:
     branches: [develop, main]
-    paths: ["services/01_web_app/**", ".github/workflows/web-01.yml"]
+    paths: ["services/01_web_app/**"]
   push:
     branches: [develop, main]
-    paths: ["services/01_web_app/**", ".github/workflows/web-01.yml"]
+    paths: ["services/01_web_app/**"]
   workflow_dispatch:
 permissions:
   contents: read

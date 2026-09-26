@@ -2,10 +2,10 @@ name: 07-football-data
 on:
   pull_request:
     branches: [develop, main]
-    paths: ["services/07_football_data/**", ".github/workflows/football-data-07.yml"]
+    paths: ["services/07_football_data/**"]
   push:
     branches: [develop, main]
-    paths: ["services/07_football_data/**", ".github/workflows/football-data-07.yml"]
+    paths: ["services/07_football_data/**"]
   workflow_dispatch:
 permissions:
   contents: read
