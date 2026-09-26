@@ -39,7 +39,7 @@ docker build -t pitchside-web --build-arg NEXT_PUBLIC_DEMO_MODE=false .
 docker run --rm -p 3000:3000 -e API_INTERNAL_URL=http://host.docker.internal:8000 pitchside-web
 ```
 
-เมื่อทีม Deploy นำ web ไปรวมใน Compose ของทีม ให้ตั้ง `API_INTERNAL_URL=http://api:8000` บน network เดียวกับ api ส่วน Router/Retrieval/Generation/Football Data ให้ตั้งที่ backend ตาม contract การเปิดผ่าน HTTPS ต้องตั้ง `COOKIE_SECURE=true` ฝั่ง backend และใช้บัญชี/secret ของ deployment จริง
+Compose กลางจาก PR #16 อยู่ที่ [docker-compose.yml ของโครงการ](../../docker-compose.yml) แล้ว โดยตั้ง `API_INTERNAL_URL=http://api:8000` และ build เว็บด้วย `NEXT_PUBLIC_DEMO_MODE=false` ส่วน Router/Retrieval/Generation/Football Data ตั้งค่าที่ backend ตาม contract วิธีใช้อยู่ใน [คู่มือ Deploy](../../deploy/README.md) ต้องมีโค้ดบริการครบก่อนทดสอบระบบจริง การเปิดผ่าน HTTPS ต้องตั้ง `COOKIE_SECURE=true` ฝั่ง backend และใช้บัญชี/secret ของ deployment จริง
 
 ## พัฒนาโดยไม่ใช้ Docker
 
@@ -105,12 +105,20 @@ try { node scripts/smoke.mjs --outage } finally { docker compose start api }
 
 ดูผลที่รันจริงและขอบเขตการตรวจใน `TEST_RESULTS.md`
 
-## เตรียมรวมระบบตาม Contract v1.2
+## เตรียมรวมระบบตาม Contract v1.3
 
-ใช้ `pnpm check` เพื่อรัน tests, typecheck, format และ production build ตามลำดับสำหรับ CI ของงาน 01 ส่วน workflow จริงใน `.github/workflows` ต้องให้เจ้าของ Deploy จัดทำ
+ใช้ `pnpm check` เพื่อรัน tests, typecheck, format และ production build ตามลำดับ โดย Deploy เพิ่ม workflow [01-web](../../.github/workflows/web-01.yml) แล้วใน PR #16 ผลตรวจบน commit `e0221c1` ผ่าน: [GitHub Actions](https://github.com/sakda1306/Advanced-Topic-in-Computer-Software-Course-Team-D-II/actions/runs/36254446367) เมื่อส่ง commit ใหม่ต้องตรวจผลบน commit นั้นอีกครั้ง
+
+Contract v1.3 เพิ่ม `context.last_ingest_at` ระหว่าง API 02 และ Router 03 ไม่ได้เพิ่ม field ที่เว็บต้องส่ง เว็บแสดงคำตอบและ `data_as_of` ตาม API โดยไม่ใช้เวลาสร้างข้อความแทนเวลาข้อมูล กรณี fallback ไม่มี `last_ingest_at` ต้องไม่มีเวลาที่แต่งขึ้นในคำตอบ การตรวจครบเส้นทางต้องรอ API/Router รุ่นที่รองรับ
 
 หน้าแชทแยกคำอธิบาย `retrieval_empty` / `retrieval_down` ตาม trace และระบุเมื่อคำตอบไม่มีแหล่งอ้างอิงหรือมาจากความรู้ทั่วไป โดยไม่เปลี่ยนข้อความคำตอบจาก API หรือสร้างวันที่ขึ้นมาเอง การบังคับตอบเฉพาะข้อมูลในฐานข้อมูลต้องตกลงกับเจ้าของ Router/Retrieval/Generation ตาม Contract
 
 หน้า error รองรับ `INDEX_NOT_READY` (503) และ `RETRIEVAL_UNAVAILABLE` (502) พร้อม Request ID และการลองใหม่ในหน้าที่รองรับ ปัจจุบัน API 02 อาจแปลงรหัสแรกเป็นรหัสหลัง
 
 ใช้ `pnpm test:integration` สำหรับชุดทดสอบ HTTP ที่เตรียมไว้ให้ระบบจริง โดยกำหนดบัญชีทดสอบสองบัญชีและไฟล์ข้อเท็จจริงจากฐานข้อมูลก่อน ชุดนี้แยกจาก `test:smoke` ที่ใช้ stub อ่านวิธีตั้งค่า ขอบเขตการเปลี่ยนข้อมูล แผนตรวจเบราว์เซอร์ และงานที่รอทีมอื่นใน [INTEGRATION.md](INTEGRATION.md)
+
+## ตรวจส่งมอบ PR #4
+
+หลังรวม develop ให้รัน `pnpm install --frozen-lockfile` และ `pnpm check` แล้ว build/เปิด Docker demo จากโฟลเดอร์นี้ รัน `pnpm test:smoke` และตรวจ login, chat/history, football และ Admin ในเบราว์เซอร์ บันทึกผลและ commit ใน `TEST_RESULTS.md` เสร็จแล้วใช้ `docker compose down` โดยไม่ใส่ `-v` เพื่อเก็บข้อมูลสาธิตไว้
+
+Peem เป็นผู้รีวิว/Approve และ Sakda เป็นผู้ merge เมื่อได้รับอนุญาตให้ส่งงาน ให้แนบ commit ล่าสุด ลิงก์ CI และผล demo smoke/browser ใน PR เดิม การทดสอบบริการจริงครบ 03–07 เป็นงานติดตามร่วมกับทีมตาม handoff และห้ามใช้ผล stub อ้างว่า integration จริงผ่านแล้ว

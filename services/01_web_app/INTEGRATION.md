@@ -2,7 +2,7 @@
 
 ## Scope
 
-Work in this module only. The central Compose, active GitHub workflow and Dockerfile ownership are coordinated with Deploy under `docs/GIT_FLOW.md`. No central workflow is installed by this module.
+Work in this module only. Deploy owns the central Compose, active GitHub workflow and Dockerfile coordination under `docs/GIT_FLOW.md`. PR #16 is merged and branch commit `e0221c1` includes it. See [central Compose](../../docker-compose.yml), [Deploy guide](../../deploy/README.md) and [01-web workflow](../../.github/workflows/web-01.yml).
 
 ## CI entry point
 
@@ -13,7 +13,7 @@ pnpm install --frozen-lockfile
 pnpm check
 ```
 
-`check` runs component/unit tests, the integration-runner tests, typecheck, format check and production build. Runner tests use synthetic responses and do not prove live AI quality. Deploy should trigger this on PRs targeting develop/main that change this module or its workflow, and record results on the latest PR commit. No service credentials are needed for this check. The production build is also exercised by the existing web Dockerfile.
+`check` runs component/unit tests, the integration-runner tests, typecheck, format check and production build. Runner tests use synthetic responses and do not prove live AI quality. The active `01-web` workflow runs for changes to this module on PRs targeting develop/main and on pushes to develop/main; manual dispatch is also available. [Run 36254446367](https://github.com/sakda1306/Advanced-Topic-in-Computer-Software-Course-Team-D-II/actions/runs/36254446367) passed on `e0221c1`. Recheck the latest commit after any new push. No service credentials are needed for this check. The production build is also exercised by the existing web Dockerfile.
 
 Windows builds use normal Next output for `pnpm start`, avoiding privileged symlink creation during pnpm standalone tracing. Linux CI and Docker retain standalone output. Use a Linux runner for the deployment build.
 
@@ -75,9 +75,15 @@ With an admin test account, verify pipeline transitions to an actual terminal st
 
 ## Open dependencies
 
+- Contract v1.3 adds optional `context.last_ingest_at` on API-to-Router requests, not on Web requests. Test fallback text with a known timestamp and with null/missing values after the supporting API/Router versions are integrated. The Web must not infer this value from `created_at` or substitute it for the independent response field `data_as_of`.
+
 - API 02 currently maps `INDEX_NOT_READY` from 05 to `RETRIEVAL_UNAVAILABLE`; Web supports either response and does not interpret either as an empty database.
 - API 02 has no Web endpoint for 05 rebuild-job polling. The KB page confirms acceptance and job ID only. Adding polling needs an agreed API contract; a vanished job after 05 restart is unknown completion, not success.
 - History currently exposes content/sources/route/rating, without trace or `data_as_of`. Web does not reconstruct missing timestamps from message creation time.
 - Strict database-only answers require a team decision: the current contract permits general knowledge and trivia fallback. Web displays the actual answer and its provenance; source presence alone does not prove that the answer is true.
 - The existing stub sends a canned match answer for unrecognized input. Replacing the stub with the real chain and testing relevance/grounding remains required.
 - Historical-data expansion remains Could until the main integration acceptance checks pass.
+
+## PR #4 review handoff
+
+The owner handoff assigns review/approval to Peem and merge to Sakda. Before review, attach the latest commit and successful `01-web` run, local `pnpm check`, Docker demo smoke and browser results. Run the module demo from `services/01_web_app`, then shut it down with `docker compose down` without deleting volumes. Report stub limitations explicitly. Real 03–07 integration remains a shared follow-up rather than a result implied by demo smoke. Prepare evidence locally until submission is authorized.
