@@ -84,6 +84,7 @@ class RouteContext(BaseModel):
     season: str
     current_matchweek: int | None
     now: str
+    last_ingest_at: str | None = None
 
 
 class RouteRequest(BaseModel):
