@@ -48,18 +48,18 @@ cp .env.example .env          # Windows PowerShell: copy .env.example .env
 
 **0.4 สร้าง branch ของตัวเอง** — ทำครั้งเดียวตอนเริ่ม ชื่อตามตารางนี้
 
-| คุณคือ | โฟลเดอร์ที่แก้ได้ | branch ของคุณ |
-|---|---|---|
-| 01 Web App · member1 | `services/01_web_app/` | `feature/01-web-member1` |
-| 02 API Backend · sakda1306 | `services/02_api_backend/` | `feature/02-api-sakda1306` |
-| 03 AI Router · member2 | `services/03_ai_router_agent/` | `feature/03-router-member2` |
-| 04 AI Engines · member3 | `services/04_ai_engines/` | `feature/04-engines-member3` |
-| 05 Retrieval · sakda1306 | `services/05_retrieval_knowledge/` | `feature/05-retrieval-sakda1306` |
-| 06 Generation · member4 | `services/06_llm_generation/` | `feature/06-generation-member4` |
-| 07 Football Data · member5 | `services/07_football_data/` | `feature/07-footballdata-member5` |
-| Deploy & Monitoring · member6 | `deploy/`, `eval/`, `docker-compose*.yml`, `Makefile`, `.github/` | `feature/08-deploy-member6` |
+| คุณคือ | GitHub | โฟลเดอร์ที่แก้ได้ | branch ของคุณ |
+|---|---|---|---|
+| 01 Web App · member1 | `Mekmai4234` | `services/01_web_app/` | `feature/01-web-mekmai4234` |
+| 02 API Backend · sakda1306 | `sakda1306` | `services/02_api_backend/` | `feature/02-api-sakda1306` |
+| 03 AI Router · member2 | `mahawongsupawit125-coder` | `services/03_ai_router_agent/` | `feature/03-ai-router-mahawongsupawit125-coder` |
+| 04 AI Engines · member3 | `PhonlakritTH` | `services/04_ai_engines/` (branch ปัจจุบันใช้ `services/04_ai_model_selection/` · รอตัดสินชื่อ) | `feature/04-ai-model-selection-phonlakrit` |
+| 05 Retrieval · sakda1306 | `sakda1306` | `services/05_retrieval_knowledge/` | `feature/05-retrieval-sakda1306` |
+| 06 Generation · member4 | `cira1234` | `services/06_llm_generation/` | `feature/06-generation-cira1234` |
+| 07 Football Data · member5 | `Notnrxth` | `services/07_football_data/` | `feature/07-footballdata-notnxrth` |
+| Deploy & Monitoring · member6 | `Peem-Atikorn` | `deploy/`, `eval/`, `docker-compose*.yml`, `Makefile`, `.github/` | `feature/08-deploy-peem-atikorn` |
 
-> เปลี่ยน `memberN` เป็น GitHub username ของตัวเองเมื่อทีมสรุปการแบ่งงานแล้ว
+> เอกสารอื่นยังเรียกสมาชิกว่า `memberN` ใช้ตารางนี้ map กับ GitHub username
 > **คนที่ถือ 2 โมดูล (sakda1306)** ใช้ 2 branch แยกกัน ให้ PR แยกกันชัดเจน อาจารย์ตรวจง่าย
 
 ```bash
@@ -352,7 +352,7 @@ develop     ← จุดรวมงานของทุกคน · เข้
 feature/01-web-member1   feature/02-api-sakda1306   feature/05-retrieval-sakda1306   ...
 ```
 
-**ใครแก้อะไรได้** (บังคับด้วยไฟล์ `.github/CODEOWNERS` + branch protection ไม่ใช่ความจำ)
+**ใครแก้อะไรได้** (บังคับด้วยไฟล์ `.github/CODEOWNERS` + branch protection ไม่ใช่ความจำ · CODEOWNERS มีแล้ว จะบังคับจริงเมื่อเปิด "Require review from Code Owners" ใน branch protection ของ `develop`)
 
 | คน | แก้ได้ |
 |---|---|

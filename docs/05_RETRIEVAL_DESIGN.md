@@ -1,6 +1,6 @@
 # 05 Retrieval / Knowledge — แบบระบบ · `retrieval`
 
-> เจ้าของ: sakda1306 · สถานะ: รอรีวิว · อ้างอิง: `00_PLAN_OVERVIEW.md` หัวข้อ 3, 7, 8 · `CONTRACT.md` §0, §4, §6 · `SCHEDULE.md` หัวข้อ 05
+> เจ้าของ: sakda1306 · สถานะ: ใช้งานแล้ว (PR ①–③ อยู่ใน `develop` ผ่าน #5 และ #13) · หัวข้อ 10 ยังเป็นข้อเสนอ · อ้างอิง: `00_PLAN_OVERVIEW.md` หัวข้อ 3, 7, 8 · `CONTRACT.md` §0, §4, §6 · `SCHEDULE.md` หัวข้อ 05
 > เอกสารนี้บอกว่า 05 ทำอะไร และตัดสินใจอะไรไปแล้วพร้อมเหตุผล ลำดับงานละเอียดอยู่ใน implementation plan แยกต่างหาก
 
 ---
@@ -222,10 +222,19 @@ services/05_retrieval_knowledge/
 
 ---
 
-## 10. ข้อเสนอ: ข้อมูลย้อนหลังจาก football-data.co.uk (รอทีมตกลง · ยังไม่ล็อก)
+## 10. ข้อเสนอ: ข้อมูลย้อนหลังจาก openfootball + Fjelstul (รอทีมตกลง · ยังไม่ล็อก)
 
-> สถานะ: **ข้อเสนอเพื่อคุยกับทีม** · ต้องแก้ CONTRACT (§10.7) ก่อนเริ่มทำ · เสนอเป็นระดับ **Could** ไม่กระทบ Must
-> ตัวเลขทุกตัวในหัวข้อนี้วัดจากไฟล์จริงที่ดาวน์โหลดเมื่อ 26 ก.ย. 2026
+> สถานะ: **ข้อเสนอเพื่อคุยกับทีม** · สัญญาอนุญาตของทั้งสองแหล่งอนุญาตให้ใช้แล้ว ไม่ต้องขอสิทธิ์เพิ่ม (§10.0) · ต้องแก้ CONTRACT (§10.7) ก่อนเริ่มทำ · เสนอเป็นระดับ **Could** ไม่กระทบ Must
+> ตัวเลขทุกตัวในหัวข้อนี้วัดจากไฟล์จริงเมื่อ 26 ก.ย. 2026 (openfootball commit `b17e8f0` · Fjelstul commit `ff3c376`)
+
+### 10.0 สิทธิ์การใช้ข้อมูล
+
+| แหล่ง | สัญญาอนุญาต | ข้อผูกพัน |
+|---|---|---|
+| [openfootball/england](https://github.com/openfootball/england) | **CC0 1.0** — *"dedicated to the public domain. Use as you please with no restrictions whatsoever."* | ไม่มี (ให้เครดิตเป็นมารยาท) |
+| [Fjelstul English Football Database](https://github.com/jfjelstul/englishfootball) | **CC-BY-SA 4.0** — ใช้ได้ทั้งเชิงพาณิชย์และไม่ใช่ | ① ให้เครดิต: ชื่อผู้สร้าง (Joshua C. Fjelstul, Ph.D.), ประกาศลิขสิทธิ์, ลิงก์สัญญาอนุญาต, ลิงก์ repo และบอกว่าดัดแปลงอะไร ② งานที่สร้างจากข้อมูลนี้ (เอกสาร historical) ต้องใช้ CC-BY-SA 4.0 ด้วย |
+
+**ไม่ใช้ football-data.co.uk** — หน้า [data.php](https://www.football-data.co.uk/data.php) (ตรวจเมื่อ 26 ก.ย. 2026) เขียนว่า *"its use is intended for private individuals only, NOT commerical or data training products using automated bots/scrapers/AI"* และ *"made available for the purposes of league match prediction only"* ระบบของเราเข้าข่ายที่ห้าม · ไฟล์ที่เคยดาวน์โหลดไว้เพื่อประเมินขนาดข้อมูลต้องไม่ถูกใช้ในระบบหรือใส่ใน repo · ถ้าได้อนุญาตจากเจ้าของภายหลัง ค่อยพิจารณาเพิ่มสถิตินัด (ยิง เตะมุม ใบเหลือง/แดง ผู้ตัดสิน) เป็นงานแยก
 
 ### 10.1 ปัญหาที่แก้
 
@@ -236,44 +245,53 @@ KB ตอนนี้มี ① trivia (ความรู้ทั่วไป)
 
 ### 10.2 แหล่งข้อมูล
 
-| เรื่อง | รายละเอียด |
-|---|---|
-| ที่มา | `https://www.football-data.co.uk/mmz4281/<yyZZ>/E0.csv` (เช่น `0304` = 2003/04) · 1 ไฟล์ต่อฤดูกาล · ไม่ต้องใช้ key ไม่มีโควตา |
-| ช่วงที่ใช้ | **1993/94 – 2025/26 = 33 ฤดูกาล · 12,704 นัด · 51 สโมสร · 938 คู่ที่เคยเจอกัน** · 1993/94 และ 1994/95 มี 22 ทีม (462 นัด) |
-| คอลัมน์ที่เก็บ | `Date` `Time` `HomeTeam` `AwayTeam` `FTHG` `FTAG` `FTR` `HTHG` `HTAG` `HTR` · ตั้งแต่ 2000/01 เพิ่ม `Referee` `HS` `AS` `HST` `AST` `HF` `AF` `HC` `AC` `HY` `AY` `HR` `AR` |
-| คอลัมน์ที่ทิ้ง | ราคาต่อรองทั้งหมด (`B365*`, `Max*`, `Avg*`, `AH*` ฯลฯ ราว 100 คอลัมน์) · ไม่เก็บเลย ตรงกับ intent `out_of_scope` ที่ไม่ตอบเรื่องราคาพนัน |
-| สัญญาอนุญาต | ใช้ฟรีเพื่อการศึกษา ต้องให้เครดิตต้นทาง (ตรวจเงื่อนไขบนเว็บอีกครั้งก่อนเริ่ม) → ใส่ URL ของไฟล์ใน `Source.url` ทุกเอกสาร + เครดิตใน README / สไลด์ |
-| ข้อระวังในไฟล์ | วันที่มีทั้ง `dd/mm/yy` และ `dd/mm/yyyy` ปนกัน · ไฟล์ขึ้นต้นด้วย BOM · URL ตอบ 302 ก่อน (ต้องตาม redirect) · ไม่มีเลข matchweek |
+| เรื่อง | openfootball (หลัก — ผลแข่งรายนัด) | Fjelstul (เสริม — ตารางจบฤดูกาลทางการ) |
+|---|---|---|
+| ไฟล์ | `archive/1990s/<yyyy-yy>/1-premierleague.txt` (1992/93–1999/00) · `<yyyy-yy>/1-premierleague.txt` (2000/01 เป็นต้นไป) · ข้อความรูปแบบ Football.TXT | `data-csv/standings.csv` (กรอง `tier == 1`) · `data-csv/teams.csv` |
+| ช่วงที่ใช้ | **1992/93 – 2025/26 = 34 ฤดูกาล · 13,166 นัด · 51 สโมสร · 686 ทีม-ฤดูกาล · 941 คู่ที่เคยเจอกัน** · 1992/93–1994/95 มี 22 ทีม (462 นัด) | 1992/93 – 2023/24 (32 ฤดูกาล) · repo อัปเดตล่าสุด 26 พ.ค. 2024 |
+| field ที่ใช้ | วันที่ · เวลา (บางนัด) · เจ้าบ้าน · ทีมเยือน · สกอร์ · เลข matchweek (หัว `▪ Matchday N` / `▪ Regular Season - N`) | `position` `team_name` `played` `wins` `draws` `losses` `goals_for` `goals_against` `goal_difference` `points` `point_adjustment` |
+| field ที่ไม่ใช้ | สกอร์ครึ่งแรก — ขาดทั้งฤดูกาลใน 1992/93–1997/98 และ 1999/00 และขาดราว 10–50 นัดต่อฤดูกาลในช่วงที่เหลือ · ชื่อคนยิงประตู — มีเฉพาะบางฤดูกาล | `appearances.csv` (ข้อมูลเดียวกับผลแข่ง) |
+| ไม่มีทั้งสองแหล่ง | สถิตินัด (ยิง ยิงตรงกรอบ เตะมุม ฟาวล์ ใบเหลือง/แดง) · ผู้ตัดสิน · ราคาต่อรอง | |
 
-**ขอบเขตเวลา**: เอกสาร historical มีเฉพาะฤดูกาล **ก่อน** `current_season` เท่านั้น ฤดูกาลปัจจุบันเป็นของ football-data.org (หลัก) อย่างเดียว ไม่มีข้อมูลสองแหล่งแข่งกันในฤดูกาลเดียว · ฤดูกาลจบเมื่อไร 07 สร้างเอกสาร historical ของฤดูกาลนั้นเพิ่ม
+**ตรวจความถูกต้องข้ามแหล่งแล้ว**: คำนวณตารางจากผลแข่งของ openfootball แล้วหักแต้มตาม `point_adjustment` ของ Fjelstul → แต้มของทุกทีมตรงกับ Fjelstul **ครบทั้ง 32 ฤดูกาลที่ทับกัน** (1992/93–2023/24)
+
+**ข้อระวังในไฟล์ openfootball**
+- มี 3 รูปแบบ: `Home  2-1 (1-0)  Away` (ถึง 2023/24) · `Home v Away  2-1 (1-0)` (2024/25) · หัวรอบ `▪ Regular Season - N` และมีบรรทัดชื่อคนยิงในวงเล็บต่อท้ายนัด (2025/26) → parser ต้องรองรับทั้ง 3 แบบ และมีเทสต่อแบบ
+- บรรทัดวันที่ส่วนใหญ่ไม่มีปี (`Sat Aug 16`) ต้องหาปีจากช่วงฤดูกาล (ส.ค.–ธ.ค. = ปีแรก · ม.ค.–พ.ค. = ปีที่สอง) · บรรทัดที่ไม่มีเวลาใช้เวลาของบรรทัดก่อนหน้า
+- ชื่อทีมไม่คงที่ข้ามฤดูกาล (95 แบบ สำหรับ 51 สโมสร) เช่น `Arsenal` / `Arsenal FC` · `Newcastle Utd` / `Newcastle United FC` · `Sheffield Wed` · `AFC Bournemouth` / `Bournemouth` → map ทุกแบบไปที่ `club_slug` · ชื่อทีมใน Fjelstul ก็ต่างออกไปอีก (id รูปแบบ `T-002`)
+
+**Fjelstul ไม่มีฤดูกาล 2024/25 เป็นต้นไป** → ฤดูกาลเหล่านี้ใช้ตารางที่คำนวณจาก openfootball + `point_deductions.json` ที่แก้ด้วยมือ (ต้องตรวจกับตารางทางการของพรีเมียร์ลีกทุกครั้งที่เพิ่มฤดูกาล)
+
+**ขอบเขตเวลา**: เอกสาร historical มีเฉพาะฤดูกาล **ก่อน** `current_season` เท่านั้น ฤดูกาลปัจจุบันเป็นของ football-data.org (หลัก) อย่างเดียว ไม่มีข้อมูลสองแหล่งแข่งกันในฤดูกาลเดียว · ฤดูกาลจบเมื่อไร 07 สร้างเอกสาร historical ของฤดูกาลนั้นเพิ่ม (openfootball มีไฟล์ของฤดูกาลปัจจุบันด้วย แต่ไม่ใช้)
 
 ### 10.3 ใครทำอะไร
 
 | service | งาน |
 |---|---|
-| 07 football-data (member5) | ดาวน์โหลด CSV → ตาราง `football.historical_matches` ใน Postgres → สร้างเอกสาร 3 ชนิด (§10.4) → `POST /index/upsert` ครั้งละ ≤ 50 เอกสาร · รันด้วยคำสั่งเดียว (เช่น `make history`) ไม่ต้องอยู่ใน beat เพราะข้อมูลไม่เปลี่ยน |
+| 07 football-data (member5) | ดาวน์โหลดไฟล์จาก `raw.githubusercontent.com` **ที่ commit ซึ่ง pin ไว้** (ไม่ใช้ `master` เพื่อให้ผลเหมือนเดิมทุกครั้ง) → parse → ตาราง `football.historical_matches` และ `football.historical_standings` ใน Postgres → สร้างเอกสาร 3 ชนิด (§10.4) → `POST /index/upsert` ครั้งละ ≤ 50 เอกสาร · รันด้วยคำสั่งเดียว (เช่น `make history`) ไม่ต้องอยู่ใน beat เพราะข้อมูลไม่เปลี่ยน |
 | 05 retrieval (sakda1306) | รับ `category` / `origin` ใหม่ · ตรวจรูปแบบ `doc_id` ใหม่ · ตัด chunk และ filter ใช้ของเดิมทั้งหมด (§10.5) |
 | 03 router (member2) | ส่ง `category: ["historical"]` ตามกฎใน §10.6 |
 | member6 | เติม golden set ย้อนหลังใน eval (§10.8) |
+| web | แสดงป้ายที่มาและเครดิตตาม CC-BY-SA (§10.7) |
 
-เลือกให้ 07 ผลิตเอกสาร ไม่ใช่ 05 อ่าน CSV เอง: ตรงกับหลัก "ข้อมูลเดียว สองมุมมอง" ในแผนหัวข้อ 3 (Postgres ให้หน้าเว็บ + เอกสารให้ KB) และ 07 เป็นเจ้าของการ map ชื่อทีมอยู่แล้ว
+เลือกให้ 07 ผลิตเอกสาร ไม่ใช่ 05 อ่านไฟล์เอง: ตรงกับหลัก "ข้อมูลเดียว สองมุมมอง" ในแผนหัวข้อ 3 (Postgres ให้หน้าเว็บ + เอกสารให้ KB) และ 07 เป็นเจ้าของการ map ชื่อทีมอยู่แล้ว
 
 ### 10.4 รูปแบบเอกสาร
 
-**ไม่ทำ 1 เอกสารต่อ 1 นัด**: 12,704 นัดจะกลายเป็น chunk มากกว่าคลัง trivia 6 เท่า และคำถามส่วนใหญ่ถามระดับฤดูกาลหรือคู่แข่ง ไม่ใช่นัดเดียว · รายละเอียดรายนัดยังอยู่ใน Postgres และอยู่ในรายการผลของเอกสารทีมรายฤดูกาล
+**ไม่ทำ 1 เอกสารต่อ 1 นัด**: 13,166 นัดจะกลายเป็น chunk มากกว่าคลัง trivia 6 เท่า และคำถามส่วนใหญ่ถามระดับฤดูกาลหรือคู่แข่ง ไม่ใช่นัดเดียว · รายละเอียดรายนัดยังอยู่ใน Postgres และอยู่ในรายการผลของเอกสารทีมรายฤดูกาล
 
 ทุกเอกสารเป็นภาษาอังกฤษ (CONTRACT §6) · ใช้ชื่อทางการจาก 07 (เช่น `Arsenal FC`) เพื่อให้ตรงกับชื่อที่การขยายชื่อเล่นต่อท้ายคำค้น · แบ่งหัวข้อด้วย `## ` ให้แต่ละ chunk สั้นพอสำหรับ MiniLM (~128 token, §3.2)
 
 | ชนิด (`topic`) | `doc_id` | จำนวน | chunk โดยประมาณ |
 |---|---|---|---|
-| ตารางจบฤดูกาล `season_table` | `hist-season-<season>` | 33 | ~6 ต่อเอกสาร → ~200 |
-| ทีมรายฤดูกาล `team_season` | `hist-team-<season>-<club_slug>` | 664 | ~4 → ~2,650 |
-| สถิติเจอกัน `head_to_head` | `hist-h2h-<club_slug_a>-<club_slug_b>` (เรียงตามตัวอักษร) | 938 | ≤ 3 → ≤ 2,800 |
-| **รวม** | | **1,635** | **~5,650** |
+| ตารางจบฤดูกาล `season_table` | `hist-season-<season>` | 34 | ~6 ต่อเอกสาร → ~200 |
+| ทีมรายฤดูกาล `team_season` | `hist-team-<season>-<club_slug>` | 686 | ~4 → ~2,750 |
+| สถิติเจอกัน `head_to_head` | `hist-h2h-<club_slug_a>-<club_slug_b>` (เรียงตามตัวอักษร) | 941 | ≤ 3 → ≤ 2,820 |
+| **รวม** | | **1,661** | **~5,770** |
 
 `club_slug` คือ key ที่คงที่ในไฟล์ map ชื่อทีม (เช่น `arsenal`, `nottm-forest`) **ไม่ใช้ `team_id`** ใน doc_id เพราะสโมสรที่ยุบไปแล้ว (เช่น Wimbledon) อาจไม่มี id ใน football-data.org · doc_id จึงคงที่เสมอแม้บางทีมไม่มี id
 
-**ตัวอย่าง `hist-season-2003`** (ตัวเลขจริงจากไฟล์)
+**ตัวอย่าง `hist-season-2003`**
 ```
 Premier League 2003/04 final table
 Champions: Arsenal FC, 90 points, unbeaten (26 W, 12 D, 0 L). Runners-up: Chelsea FC, 79 points.
@@ -284,13 +302,14 @@ Relegated: Leicester City FC, Leeds United FC, Wolverhampton Wanderers FC.
 ## Table: positions 6-10
 ...
 ## Season facts
-Total goals ..., most goals scored: ..., fewest conceded: ..., most red cards: ...
+Total goals ..., most goals scored: ..., fewest conceded: ..., biggest win: ...
+Sources: final table from the Fjelstul English Football Database (CC-BY-SA 4.0); match results from openfootball (CC0).
 ```
 
-**ตัวอย่าง `hist-h2h-arsenal-tottenham`**
+**ตัวอย่าง `hist-h2h-arsenal-tottenham`** (ตัวเลขจริงจาก openfootball)
 ```
-Arsenal FC vs Tottenham Hotspur FC — Premier League head-to-head, 1993/94 to 2025/26
-66 meetings: Arsenal FC won 29, draws 24, Tottenham Hotspur FC won 13.
+Arsenal FC vs Tottenham Hotspur FC — Premier League head-to-head, 1992/93 to 2025/26
+68 meetings: Arsenal FC won 29, draws 24, Tottenham Hotspur FC won 15.
 At Arsenal FC home: ... At Tottenham Hotspur FC home: ...
 ## Recent meetings
 2025/26  22 Feb 2026  Tottenham Hotspur FC 1-4 Arsenal FC
@@ -300,24 +319,27 @@ At Arsenal FC home: ... At Tottenham Hotspur FC home: ...
 ...
 ```
 
-**ตัวอย่าง `hist-team-2003-arsenal`**: `c0` สรุป (อันดับ แต้ม W/D/L ประตูได้-เสีย) · `## Home and away` · `## Results August-December` · `## Results January-May` (รายการผลเรียงตามวันที่ พร้อมผู้ตัดสินตั้งแต่ 2000/01) · chunk รายการผลยาวราว 200 token ฝั่ง vector อ่านไม่ครบแต่ BM25 เห็นครบ (ข้อจำกัดเดียวกับ §3.2)
+**ตัวอย่าง `hist-team-2003-arsenal`**: `c0` สรุป (อันดับ แต้ม W/D/L ประตูได้-เสีย) · `## Home and away` · `## Results August-December` · `## Results January-May` (รายการผลเรียงตามวันที่ พร้อมเลข matchweek) · chunk รายการผลยาวราว 200 token ฝั่ง vector อ่านไม่ครบแต่ BM25 เห็นครบ (ข้อจำกัดเดียวกับ §3.2)
 
-**คำนวณตารางเองต้องแก้การตัดแต้ม** — CSV มีแค่ผลแข่ง ตารางที่คำนวณได้จึงผิดในฤดูกาลที่มีการตัดแต้ม ตัวอย่างจริง: 1996/97 ถ้าไม่หัก 3 แต้มของ Middlesbrough ตารางจะบอกว่า Sunderland อันดับ 19 และ Middlesbrough รอด ซึ่งผิด · 07 เก็บไฟล์ `point_deductions.json` ที่แก้ด้วยมือ (Middlesbrough 1996/97 −3 · Portsmouth 2009/10 −9 · Everton 2023/24 −8 · Nottingham Forest 2023/24 −4) และเขียนบอกในเอกสารว่าถูกหักแต้ม · มีเทสเทียบแชมป์และทีมตกชั้นครบ 33 ฤดูกาล (§10.8)
+**การตัดแต้ม** — ผลแข่งอย่างเดียวคำนวณตารางผิดในฤดูกาลที่มีการตัดแต้ม ตัวอย่างจริง: 1996/97 ถ้าไม่หัก 3 แต้มของ Middlesbrough ตารางจะบอกว่า Sunderland อันดับ 19 และ Middlesbrough รอด ซึ่งผิด
+- 1992/93–2023/24: **ใช้ตารางของ Fjelstul เป็นตารางทางการ** (มีคอลัมน์ `point_adjustment` อยู่แล้ว: Middlesbrough 1996/97 −3 · Portsmouth 2009/10 −9 · Everton 2023/24 −8 · Nottingham Forest 2023/24 −4) และเขียนบอกในเอกสารว่าถูกหักแต้ม
+- 2024/25 เป็นต้นไป: คำนวณจาก openfootball + `point_deductions.json` (§10.2)
 
 ### 10.5 metadata และตัวกรอง
 
 | field | `season_table` | `team_season` | `head_to_head` |
 |---|---|---|---|
 | `category` | `historical` | `historical` | `historical` |
-| `origin` | `football-data.co.uk` | `football-data.co.uk` | `football-data.co.uk` |
+| `origin` | `fjelstul` (≤ 2023/24) · `openfootball` (2024/25 เป็นต้นไป) | `openfootball` | `openfootball` |
 | `season` | `"2003"` | `"2003"` | `null` (ครอบคลุมหลายฤดูกาล) |
 | `matchweek` | `null` | `null` | `null` |
 | `team_ids` | ทุกทีมในฤดูกาลที่มี id | `[id]` หรือ `[]` ถ้าไม่มี id | ทั้งสองทีมที่มี id |
 | `date` | `null` | `null` | `null` |
 | `fetched_at` | `null` | `null` | `null` |
-| `url` | URL ของ CSV ฤดูกาลนั้น | URL ของ CSV ฤดูกาลนั้น | `https://www.football-data.co.uk/englandm.php` |
+| `url` | `https://github.com/jfjelstul/englishfootball` (≤ 2023/24) · URL ไฟล์ openfootball ของฤดูกาลนั้น | URL ไฟล์ openfootball ของฤดูกาลนั้น (ที่ commit ที่ pin) | `https://github.com/openfootball/england` |
 | `topic` | `season_table` | `team_season` | `head_to_head` |
 
+- **`origin` ของ `team_season`** เป็น `openfootball` แม้สรุปอันดับ/แต้มใน `c0` มาจากตาราง Fjelstul · เครดิตทั้งสองแหล่งเขียนไว้ท้ายเอกสารเหมือนตัวอย่าง `hist-season-2003`
 - **`fetched_at` = null**: เป็นข้อมูลนิ่ง ไม่ใช่ข้อมูลสด · ถ้าใส่เวลาดาวน์โหลด `data_as_of` ของคำตอบ (CONTRACT §1 `ChatResponse`) จะแสดงวันที่เก่าผิดความหมาย
 - **ตัวกรองใช้ของเดิมทั้งหมด ไม่เพิ่ม field ใน §4**:
   - `category: ["historical"]` แยกออกจากข้อมูลสดได้ทันที
@@ -340,27 +362,33 @@ At Arsenal FC home: ... At Tottenham Hotspur FC home: ...
 
 ### 10.7 สิ่งที่ต้องแก้ใน CONTRACT (PR แยก ถ้าทีมตกลง)
 
-- §0 enum: `category` เพิ่ม `historical` · `origin` เพิ่ม `football-data.co.uk` · หน้าเว็บแสดงป้าย "ข้อมูลย้อนหลัง (football-data.co.uk)"
+- §0 enum: `category` เพิ่ม `historical` · `origin` เพิ่ม `openfootball` และ `fjelstul` · หน้าเว็บแสดงป้าย "ข้อมูลย้อนหลัง (openfootball)" / "ข้อมูลย้อนหลัง (Fjelstul)"
 - §1 `ChatResponse`: `data_as_of` ไม่นับเอกสาร `historical` (เพราะ `fetched_at` = null)
 - §3: ตาราง intent → `filters.category` ตาม §10.6
 - §6: ตารางรูปแบบ `doc_id` เพิ่ม 3 แถวตาม §10.4
+- **เครดิตตาม CC-BY-SA** (เงื่อนไขบังคับ ไม่ใช่ทางเลือก): คำตอบที่ใช้เอกสาร `origin = fjelstul` ต้องแสดงลิงก์ `Source.url` · README และสไลด์มีข้อความเครดิตเต็ม (ชื่อผู้สร้าง, ลิงก์สัญญาอนุญาต CC-BY-SA 4.0, ลิงก์ repo, "adapted: tables converted to text summaries") และระบุว่าเอกสาร historical เผยแพร่ภายใต้ CC-BY-SA 4.0 · openfootball ให้เครดิตในที่เดียวกัน
 - Changelog: v1.x · field เดิมไม่ถูกลบหรือเปลี่ยนชื่อ
 
 ### 10.8 การทดสอบและ eval
 
-- 07 unit: อ่านวันที่ทั้งสองรูปแบบ · ตัด BOM · ทิ้งคอลัมน์ราคา · **แชมป์และทีมตกชั้นที่คำนวณได้ต้องตรงกับรายการจริงครบ 33 ฤดูกาล** (จับการตัดแต้มที่ขาด เช่นกรณี 1996/97) · ทุกชื่อทีมใน CSV ต้องมีใน `club_slug` (ชื่อใหม่ที่ไม่รู้จัก → ล้มดัง ๆ ไม่ข้ามเงียบ)
+- 07 unit: parse ไฟล์ openfootball ครบ 3 รูปแบบ (§10.2) · หาปีของวันที่ถูกทั้งสองครึ่งฤดูกาล · บรรทัดชื่อคนยิงไม่ถูกนับเป็นนัด · จำนวนนัดต่อฤดูกาลตรงกับหัวไฟล์ (`# Matches`) · **ตารางที่คำนวณได้ + `point_adjustment` ต้องตรงกับตาราง Fjelstul ครบ 32 ฤดูกาล** · ทุกชื่อทีมในทั้งสองแหล่งต้องมีใน `club_slug` (ชื่อใหม่ที่ไม่รู้จัก → ล้มดัง ๆ ไม่ข้ามเงียบ)
 - 05 unit: รูปแบบ `doc_id` ใหม่ · filter `season` ตัด h2h ออก · filter `date_*` ตัด historical ออกทั้งหมด
 - eval: `eval/golden_history.jsonl` 20 ข้อ (ตารางจบฤดูกาล 7 · ทีมรายฤดูกาล 7 · h2h 6 · ครบ 4 แบบคำถามตาม §8) · รัน `golden_trivia` ซ้ำเพื่อยืนยันว่าการเพิ่ม `historical` ใน `trivia_history` ไม่ทำ hit@1 ของ trivia ตก
 
 ### 10.9 ขนาดและความเร็ว
 
-- chunk ใน index จะเพิ่มจาก ~2,000 (trivia + ข้อมูลสด) เป็น **~7,700** เกินขนาดที่ตั้งเป้า p95 ≤ 300 ms ไว้ (~5,000 chunk, §4) → **ต้องวัด latency ซ้ำ** ก่อนเปิดใช้
-- ถ้าช้าเกิน ตัดตามลำดับนี้: ① รวมรายการผลใน `team_season` เป็น chunk เดียว ② h2h เฉพาะคู่ที่มีอย่างน้อยหนึ่งทีมอยู่ในฤดูกาลปัจจุบัน ③ เริ่มที่ 2000/01 (ช่วงที่มีสถิติครบ)
-- ingest ครั้งแรก: embed ~5,650 chunk บน CPU (คลัง trivia 1,953 chunk ใช้ ~24 วินาทีตอน rebuild) · 07 ส่งครั้งละ ≤ 50 เอกสารให้อยู่ใน timeout 30 วินาทีของ upsert · รันซ้ำไม่ embed ใหม่เพราะ `content_hash` ไม่เปลี่ยน (§3.3)
+- chunk ใน index จะเพิ่มจาก ~2,000 (trivia + ข้อมูลสด) เป็น **~7,800** เกินขนาดที่ตั้งเป้า p95 ≤ 300 ms ไว้ (~5,000 chunk, §4) → **ต้องวัด latency ซ้ำ** ก่อนเปิดใช้
+- ถ้าช้าเกิน ตัดตามลำดับนี้: ① รวมรายการผลใน `team_season` เป็น chunk เดียว ② h2h เฉพาะคู่ที่มีอย่างน้อยหนึ่งทีมอยู่ในฤดูกาลปัจจุบัน ③ เริ่มที่ 2000/01
+- ingest ครั้งแรก: embed ~5,770 chunk บน CPU (คลัง trivia 1,953 chunk ใช้ ~24 วินาทีตอน rebuild) · 07 ส่งครั้งละ ≤ 50 เอกสารให้อยู่ใน timeout 30 วินาทีของ upsert · รันซ้ำไม่ embed ใหม่เพราะ `content_hash` ไม่เปลี่ยน (§3.3)
 
 ### 10.10 คำถามที่ต้องตัดสินในที่ประชุม
 
 1. ทำหรือไม่ และจัดเป็น Could ตามที่เสนอหรือไม่ · member5 มีเวลาทำหลัง Must ของ 07 เสร็จหรือไม่
-2. เอาช่วง 1993/94–1999/2000 ด้วยหรือไม่ (มีแค่สกอร์ ไม่มีสถิติ) — เสนอว่า **เอา** เพราะคำถามยุคแรก เช่น แชมป์ Blackburn 1994/95 ตอบไม่ได้ถ้าไม่มี
+2. รับเงื่อนไข CC-BY-SA ของ Fjelstul ได้หรือไม่ (เครดิตบนหน้าเว็บ + เอกสาร historical เป็น CC-BY-SA) — ถ้าไม่รับ ใช้ทางเลือกที่ 1 ใน §10.11
 3. ใช้ intent เดิมตาม §10.6 หรือเพิ่ม intent ใหม่ (ต้องเทรน classifier ใหม่)
-4. ใส่ URL ของ CSV ใน `Source.url` เพื่อให้เครดิต — หน้าเว็บแสดงลิงก์นี้หรือไม่
+4. ยอมรับว่าไม่มีสถิตินัด (ยิง ใบเหลือง/แดง ผู้ตัดสิน) หรือไม่ — คำถามเช่น "ฤดูกาลไหนใบแดงเยอะสุด" จะตอบว่าไม่มีข้อมูล
+
+### 10.11 แผนสำรอง
+
+1. **ถ้าไม่รับ CC-BY-SA** → ใช้ openfootball (CC0) อย่างเดียว · คำนวณตารางเองทุกฤดูกาลด้วย `point_deductions.json` (4 รายการใน §10.4 + ฤดูกาลหลัง 2023/24) · ตัด `origin = fjelstul` ออก · เทสเทียบแชมป์/ทีมตกชั้นกับรายการที่เขียนด้วยมือแทน
+2. **ถ้าไม่มีเวลาทำ** → ตัด §10 ออกจากขอบเขต · คำถามย้อนหลังที่ไม่มีในคลังตอบว่า "ไม่มีข้อมูล" แทนการถอยไป `general_ai` ที่เดาสกอร์ · เขียนบอกข้อจำกัดนี้ในสไลด์
