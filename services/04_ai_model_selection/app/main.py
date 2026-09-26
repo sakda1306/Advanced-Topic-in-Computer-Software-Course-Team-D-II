@@ -7,7 +7,16 @@ from fastapi.responses import JSONResponse
 
 from .config import settings
 from .llm_client import LLMUnavailableError, call_general_ai
-from .schemas import EngineResult, GeneralRequest, ProblemDetail, TokenUsage
+from .local_classifier import ModelNotLoadedError, classify as classify_intent, model_version
+from .schemas import (
+    ClassifyRequest,
+    EngineResult,
+    GeneralRequest,
+    PredictRequest,
+    ProblemDetail,
+    TokenUsage,
+)
+from .token_budget import trim_history_to_budget
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("engines")
@@ -74,9 +83,18 @@ def general(body: GeneralRequest, request: Request):
     request_id = body.request_id or getattr(request.state, "request_id", str(uuid.uuid4()))
 
     system_prompt = SYSTEM_PROMPT_TH if body.language == "th" else SYSTEM_PROMPT_EN
+
+    # D4: ตัด history เก่าสุดออกจนกว่าจะอยู่ในงบ token โดยประมาณ (เก็บข้อความใหม่สุดไว้ก่อน)
+    history_dicts = [{"role": h.role, "content": h.content} for h in body.history[-10:]]
+    trimmed_history = trim_history_to_budget(
+        history_dicts,
+        system_prompt=system_prompt,
+        query=body.query,
+        max_input_tokens=settings.GENERAL_MAX_INPUT_TOKENS,
+    )
+
     messages = [{"role": "system", "content": system_prompt}]
-    for h in body.history[-10:]:  # กันบริบทยาวเกินงบเวลา/โทเค็น
-        messages.append({"role": h.role, "content": h.content})
+    messages.extend(trimmed_history)
     messages.append({"role": "user", "content": body.query})
 
     t0 = time.monotonic()
@@ -106,6 +124,67 @@ def general(body: GeneralRequest, request: Request):
         token_usage=TokenUsage(**token_usage),
     )
     return result.model_dump()
+
+
+@app.post("/local/classify")
+def local_classify(body: ClassifyRequest, request: Request):
+    """D3 — router ใช้เส้นนี้เป็นชั้น classifier ก่อนตัดสินใจ route (CONTRACT.md §3)"""
+    request_id = body.request_id or getattr(request.state, "request_id", str(uuid.uuid4()))
+
+    t0 = time.monotonic()
+    try:
+        result_data = classify_intent(body.text)
+        model_used = model_version()
+    except ModelNotLoadedError as e:
+        return _problem(
+            status=503,
+            code="MODEL_UNAVAILABLE",
+            title="Local classifier model unavailable",
+            detail=str(e),
+            request_id=request_id,
+        )
+    latency_ms = int((time.monotonic() - t0) * 1000)
+
+    result = EngineResult(
+        engine="local_ai",
+        content=f"intent: {result_data['label']} ({result_data['score']:.2f})",
+        data=result_data,
+        sources=[],
+        model=model_used,
+        latency_ms=latency_ms,
+        token_usage=TokenUsage(input=0, output=0),  # ไม่ได้เรียก LLM
+    )
+    return result.model_dump()
+
+
+@app.post("/local/predict")
+def local_predict(body: PredictRequest, request: Request):
+    """
+    D5 (Could) — ทำนายผลนัดด้วย Poisson model จากผลที่ 07 (football-data) เก็บไว้
+
+    ยังตอบ 501 ตามที่ CONTRACT.md §3 อนุญาตไว้ล่วงหน้า เพราะมี 2 อย่างที่ยังไม่พร้อมจริง ๆ
+    (ไม่ใช่แค่ "ยังไม่ได้เขียนโค้ด"):
+
+    1. service `07_football_data` ยังไม่ถูกสร้าง (ตาม SCHEDULE.md ทุก service ยังเป็น placeholder)
+       จึงไม่มี "ผลที่ 07 เก็บไว้" ให้ดึงจริง
+    2. CONTRACT.md §7 (api → football-data) ไม่ได้ให้สิทธิ์ `engines` เรียก football-data โดยตรง —
+       คนเรียกที่ระบุไว้มีแค่ `api` และ `router` (เฉพาะ `/football/teams`) เท่านั้น การจะให้ /local/predict
+       ดึงผลย้อนหลังมาคำนวณเองต้องแก้ CONTRACT.md เพิ่ม § ใหม่ก่อน (ต้อง approve จาก sakda1306 + เจ้าของ 07)
+
+    ส่วนที่ "ทำแล้วจริง" คือคณิตศาสตร์ Poisson ล้วน ๆ ใน app/poisson.py (มี unit test ครบ
+    ใน tests/test_poisson.py) — พร้อมต่อกับข้อมูลจริงทันทีที่มี 07 และ path การเรียกที่ตกลงกันแล้ว
+    """
+    request_id = body.request_id or getattr(request.state, "request_id", str(uuid.uuid4()))
+    return _problem(
+        status=501,
+        code="NOT_IMPLEMENTED",
+        title="Prediction feature not available yet",
+        detail=(
+            "ฟีเจอร์ทำนายผลยังไม่เปิดใช้งาน — รอ service 07_football_data และการเพิ่ม CONTRACT.md "
+            "ให้ engines อ่านผลย้อนหลังได้ก่อน (ดู docstring ของ endpoint นี้ใน main.py)"
+        ),
+        request_id=request_id,
+    )
 
 
 @app.exception_handler(Exception)

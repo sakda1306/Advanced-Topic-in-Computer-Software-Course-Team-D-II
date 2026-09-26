@@ -16,6 +16,22 @@ class GeneralRequest(BaseModel):
     language: Literal["th", "en"] = "th"
 
 
+class ClassifyRequest(BaseModel):
+    """Body ของ POST /local/classify — CONTRACT.md §3"""
+
+    request_id: str
+    text: str
+
+
+class PredictRequest(BaseModel):
+    """Body ของ POST /local/predict (Could) — CONTRACT.md §3"""
+
+    request_id: str
+    home_team_id: int
+    away_team_id: int
+    season: str
+
+
 class TokenUsage(BaseModel):
     input: int
     output: int

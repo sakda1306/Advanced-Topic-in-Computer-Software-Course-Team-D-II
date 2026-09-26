@@ -239,3 +239,17 @@ Translate this sentence into English,out_of_scope,en
 Recommend a good movie to watch,out_of_scope,en
 Give me a betting tip for tonight,out_of_scope,en
 วันนี้วันที่เท่าไหร่,out_of_scope,th
+ยูไนเต็ดชนะไปกี่ลูกเมื่อคืน,match_result,th
+ยูไนเต็ดแพ้หรือชนะนัดล่าสุด,match_result,th
+ยูไนเต็ดเจอใครนัดหน้า,fixture_schedule,th
+ยูไนเต็ดมีนัดกับใครสัปดาห์นี้,fixture_schedule,th
+สรุปเกมเมื่อคืนให้หน่อยทุกคู่เลย,weekly_summary,th
+เมื่อคืนแข่งกี่คู่ สรุปผลให้หน่อยทั้งหมด,weekly_summary,th
+คืนนี้มีกี่แมตช์ สรุปทุกคู่หลังจบเกมให้หน่อย,weekly_summary,th
+สิงห์บลูตกรอบยูฟ่าแชมเปียนส์ลีกปีล่าสุดตอนไหน,trivia_history,th
+ปืนใหญ่เคยไม่แพ้ติดต่อกันกี่นัดในประวัติศาสตร์สโมสร,trivia_history,th
+อาร์เซนอลเคยได้แชมป์พรีเมียร์ลีกกี่สมัยรวมทั้งหมด,trivia_history,th
+ทีมไหนเคยครองสถิติไม่แพ้ยาวนานที่สุดในพรีเมียร์ลีก,trivia_history,th
+who has more clean sheets city or arsenal,standings_stats,en
+how many clean sheets does arsenal have this season,standings_stats,en
+does city or liverpool have more points right now,standings_stats,en

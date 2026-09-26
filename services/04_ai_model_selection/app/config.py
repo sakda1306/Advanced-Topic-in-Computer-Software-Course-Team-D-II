@@ -27,8 +27,12 @@ class Settings:
     PRIMARY_TIMEOUT_SECONDS = float(os.getenv("GENERAL_PRIMARY_TIMEOUT_SECONDS", "12"))
     FALLBACK_TIMEOUT_SECONDS = float(os.getenv("GENERAL_FALLBACK_TIMEOUT_SECONDS", "10"))
 
-    # D2: ยังไม่จำกัด token อย่างเข้มงวด (ของ D4) แต่ตั้งเพดานกันหลุดไว้ก่อน
-    GENERAL_MAX_TOKENS = int(os.getenv("GENERAL_MAX_TOKENS", "600"))
+    # D4: จำกัด token ของ /general สองทาง
+    #  1) response — เพดานคำตอบที่ให้ LLM สร้าง (ลดจาก D2 เพราะ /general ควรตอบสั้นกระชับ)
+    GENERAL_MAX_TOKENS = int(os.getenv("GENERAL_MAX_TOKENS", "350"))
+    #  2) input — งบ token โดยประมาณของ (system + history + query) ก่อนยิง LLM
+    #     ตัด history เก่าสุดออกก่อนถ้าเกินงบ กัน context โตไม่จำกัดตามความยาวบทสนทนา
+    GENERAL_MAX_INPUT_TOKENS = int(os.getenv("GENERAL_MAX_INPUT_TOKENS", "1200"))
 
 
 settings = Settings()
