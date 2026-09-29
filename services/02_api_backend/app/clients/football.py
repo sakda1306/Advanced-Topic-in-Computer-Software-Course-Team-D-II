@@ -121,6 +121,7 @@ def router_context(status: dict[str, Any] | None) -> dict[str, Any]:
         "season": str(status.get("current_season") or season_for(now)),
         "current_matchweek": status.get("current_matchweek"),
         "now": now.isoformat(timespec="seconds"),
+        "last_ingest_at": status.get("last_ingest_at"),
     }
 
 
