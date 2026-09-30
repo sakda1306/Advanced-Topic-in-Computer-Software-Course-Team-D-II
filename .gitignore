@@ -45,3 +45,6 @@ desktop.ini
 # logs
 *.log
 logs/
+.venv/
+__pycache__/
+*.pyc

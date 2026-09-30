@@ -16,7 +16,7 @@ INTENT_MAP = {
     "out_of_scope": ("decline", None),
 }
 
-MATCHWEEK_PATTERN = re.compile(r"(?:นัดที่\s*|matchweek\s*)(\d+)")
+MATCHWEEK_PATTERN = re.compile(r"(?:นัดที่\s*|แมตช์วีค\s*|สัปดาห์ที่\s*|matchweek\s*)(\d+)")
 
 
 @dataclass

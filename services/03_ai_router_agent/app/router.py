@@ -1,7 +1,7 @@
 import asyncio
 import time
 
-from .decisions import decide, enrich, classify_intent, from_intent
+from .decisions import MATCHWEEK_PATTERN, decide, enrich, classify_intent, from_intent
 from .teams import TeamDirectory
 
 
@@ -114,7 +114,15 @@ class Router:
                             break
                         if chunks:
                             break
-                        if attempt == 0 and any(key in filters for key in ("matchweek", "date_from", "date_to")):
+                        explicit_standings_week = (
+                            decision.intent == "standings_stats"
+                            and MATCHWEEK_PATTERN.search(query.lower()) is not None
+                        )
+                        if (
+                            attempt == 0
+                            and not explicit_standings_week
+                            and any(key in filters for key in ("matchweek", "date_from", "date_to"))
+                        ):
                             filters = {key: value for key, value in filters.items()
                                        if key not in ("matchweek", "date_from", "date_to")}
                             payload = {**payload, "filters": filters}

@@ -128,6 +128,10 @@ class DecisionTests(unittest.TestCase):
         result = decide("ทำนายผล แมนซิตี้ กับ ลิเวอร์พูล", CONTEXT, [], TEAMS)
         self.assertEqual(result.team_ids, [65, 64])
 
+    def test_liverpool_duck_alias_resolves_offline(self):
+        self.assertEqual(TEAMS.find("เป็ดแดงเตะวันไหน")[0].team_id, 64)
+        self.assertIn("Liverpool", TEAMS.replace_aliases("เป็ดแดงเตะวันไหน"))
+
     def test_live_team_refresh_keeps_offline_aliases(self):
         live = TeamDirectory.from_payload({"teams": [{"team_id": 57, "name": "Arsenal FC",
             "short_name": "Arsenal", "aliases": ["ใหม่"]}]})
