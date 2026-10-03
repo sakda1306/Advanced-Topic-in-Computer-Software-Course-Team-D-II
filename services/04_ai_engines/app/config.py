@@ -45,6 +45,9 @@ class Settings:
     #  2) input — งบ token โดยประมาณของ (system + history + query) ก่อนยิง LLM
     #     ตัด history เก่าสุดออกก่อนถ้าเกินงบ กัน context โตไม่จำกัดตามความยาวบทสนทนา
     GENERAL_MAX_INPUT_TOKENS = int(os.getenv("GENERAL_MAX_INPUT_TOKENS", "1200"))
+    #  3) temperature — ค่าเริ่มต้นของ provider (ราว 1) ทำให้ LLM แต่งรายละเอียดที่ไม่ได้ถามเพิ่ม
+    #     0.3 ลดเรื่องแต่งลงชัดเจนเมื่อลองกับคำถามไทยจริง และยังตอบเป็นกันเองอยู่
+    GENERAL_TEMPERATURE = float(os.getenv("GENERAL_TEMPERATURE", "0.3"))
 
 
 settings = Settings()

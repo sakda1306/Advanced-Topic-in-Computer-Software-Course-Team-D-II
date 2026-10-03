@@ -290,6 +290,13 @@ class ChatClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Football questions, even vague ones, are never chitchat", system)
         self.assertEqual(seen["temperature"], 0)
 
+    async def test_classifier_prompt_explains_the_team_note(self):
+        seen = {}
+        reply = '{"intent": "general_football", "confidence": 0.9}'
+        with patch.dict("os.environ", GROQ_ONLY), patch("openai.AsyncOpenAI", fake_openai(reply, seen)):
+            await ServiceClients(None).llm_decide("ผึ้งแดงคือทีมไหน", "req")
+        self.assertIn("Premier League clubs, so the question is about football", seen["messages"][0]["content"])
+
     async def test_the_classifier_prompt_has_no_chitchat_when_the_switch_is_off(self):
         seen = {}
         reply = '{"intent": "general_football", "confidence": 0.9}'

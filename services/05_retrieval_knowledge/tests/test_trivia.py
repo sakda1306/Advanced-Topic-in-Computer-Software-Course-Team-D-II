@@ -2,18 +2,25 @@
 
 from __future__ import annotations
 
+import json
+import re
 from pathlib import Path
 
+from app.kb.documents import doc_id_matches
 from app.kb.trivia import (
+    NICKNAME_FIRST_NUMBER,
     TriviaEntry,
     dedupe,
     fold,
+    load_nickname_documents,
     load_trivia_documents,
     parse_trivia,
     to_document,
 )
 
 TRIVIA_FILE = Path(__file__).parents[1] / "data" / "football_trivia_qa.txt"
+NICKNAME_FILE = Path(__file__).parents[1] / "data" / "thai_nicknames_qa.txt"
+ALIASES_FILE = Path(__file__).parents[1] / "data" / "team_aliases.json"
 
 SAMPLE = """# header comment
 # ======
@@ -107,3 +114,31 @@ def test_real_trivia_file() -> None:
     assert documents[0].doc_id == "trivia-0001"
     assert documents[0].text.endswith("\nA: Peru")
     assert len({d.doc_id for d in documents}) == 1953
+
+
+def test_nickname_documents_are_numbered_after_the_trivia_file(tmp_path: Path) -> None:
+    nicknames = tmp_path / "nicknames.txt"
+    nicknames.write_text(SAMPLE, encoding="utf-8")
+    documents, report = load_nickname_documents(nicknames)
+    assert NICKNAME_FIRST_NUMBER > 1996  # never collides with trivia-0001..trivia-1996
+    assert [d.doc_id for d in documents] == [
+        f"trivia-{NICKNAME_FIRST_NUMBER:04d}",
+        f"trivia-{NICKNAME_FIRST_NUMBER + 4:04d}",
+    ]
+    assert all(d.category == "trivia" for d in documents)
+    assert report.duplicates == [NICKNAME_FIRST_NUMBER + 1, NICKNAME_FIRST_NUMBER + 5]
+
+
+def test_real_nickname_file_names_every_league_club_and_its_thai_nickname() -> None:
+    documents, report = load_nickname_documents(NICKNAME_FILE)
+    assert report.duplicates == [] and report.conflicts == []
+    assert all(doc_id_matches("trivia", d.doc_id) for d in documents)
+    trivia_ids = {d.doc_id for d in load_trivia_documents(TRIVIA_FILE)[0]}
+    assert not trivia_ids & {d.doc_id for d in documents}
+    teams = json.loads(ALIASES_FILE.read_text(encoding="utf-8-sig"))["teams"]
+    for team in teams:
+        club = re.sub(r"\s+(?:A?FC)$|^AFC\s+", "", team["name"])
+        thai = [alias for alias in team["aliases"] if re.search(r"[ก-๙]", alias)]
+        matching = [d for d in documents if club in d.text]
+        assert matching, club
+        assert any(alias in d.text for d in matching for alias in thai), club

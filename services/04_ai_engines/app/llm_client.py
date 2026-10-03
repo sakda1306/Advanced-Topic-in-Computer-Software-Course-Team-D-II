@@ -156,6 +156,7 @@ def _try_provider(
         model=model,
         messages=messages,
         max_tokens=max_tokens,
+        temperature=settings.GENERAL_TEMPERATURE,
         # httpx.Timeout ยังตั้งไว้เป็นชั้นแรก (ตัด connect/read ที่ค้างเร็ว) แต่ไม่ใช่เพดานรวม —
         # เพดานรวมคือ _call_with_hard_timeout ด้านบน
         timeout=httpx.Timeout(timeout, connect=min(CONNECT_TIMEOUT_SECONDS, timeout)),

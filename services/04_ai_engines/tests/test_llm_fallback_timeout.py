@@ -289,3 +289,17 @@ def test_hop_timeout_is_capped_by_remaining_budget(mock_client_factory):
 
     assert content == "Gemini answer"
     assert gemini_mock.chat.completions.create.call_args.kwargs["timeout"].read == pytest.approx(3.0)
+
+@patch("app.llm_client._client")
+def test_every_hop_uses_the_configured_temperature(mock_client_factory):
+    """A low temperature keeps /general from adding made-up details (live A/B on Thai questions)."""
+    groq_mock, gemini_mock = MagicMock(), MagicMock()
+    groq_mock.chat.completions.create.side_effect = _timeout_error()
+    gemini_mock.chat.completions.create.return_value = _mock_response("Gemini answer")
+    mock_client_factory.side_effect = _two_clients(groq_mock, gemini_mock)
+
+    call_general_ai(messages=[{"role": "user", "content": "x"}], max_tokens=100, request_id="req-temp")
+
+    assert config.settings.GENERAL_TEMPERATURE == pytest.approx(0.3)
+    for mock in (groq_mock, gemini_mock):
+        assert mock.chat.completions.create.call_args.kwargs["temperature"] == pytest.approx(0.3)

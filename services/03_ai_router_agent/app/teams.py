@@ -33,12 +33,14 @@ class TeamDirectory:
             by_id[team.team_id] = Team(team.team_id, team.name, team.short_name, aliases)
         return TeamDirectory(list(by_id.values()))
 
-    def find(self, query: str) -> list[Team]:
+    def _matches(self, query: str) -> list[tuple[int, Team, list[tuple[str, str]]]]:
+        """Each named team with its first position and every (name, text as written) that matched."""
         found = []
         for team in self.teams:
             full_name = re.sub(r"\s+(?:A?FC)$", "", team.name, flags=re.IGNORECASE)
             names = (team.short_name, team.name, full_name, *team.aliases)
             first_position = None
+            matched = []
             for name in names:
                 if not name:
                     continue
@@ -52,11 +54,26 @@ class TeamDirectory:
                         re.search(r"(?:เลสเตอร์|สโต๊ก|สโต๊ค|คาร์ดิฟฟ์|ฮัลล์|เบอร์มิงแฮม|บริสตอล)\s*$",
                                   query[:match.start()])):
                     continue
-                if match and (first_position is None or match.start() < first_position):
-                    first_position = match.start()
+                if match:
+                    matched.append((name, match.group(0)))
+                    if first_position is None or match.start() < first_position:
+                        first_position = match.start()
             if first_position is not None:
-                found.append((first_position, team))
-        return [team for _, team in sorted(found, key=lambda item: item[0])]
+                found.append((first_position, team, matched))
+        return sorted(found, key=lambda item: item[0])
+
+    def find(self, query: str) -> list[Team]:
+        return [team for _, team, _ in self._matches(query)]
+
+    def nicknames(self, query: str) -> list[tuple[str, Team]]:
+        """Teams the query names only by a nickname or Thai name, with the longest such name as written."""
+        result = []
+        for _, team, matched in self._matches(query):
+            full_name = re.sub(r"\s+(?:A?FC)$", "", team.name, flags=re.IGNORECASE)
+            if any(name in (team.short_name, team.name, full_name) for name, _ in matched):
+                continue
+            result.append((max((written for _, written in matched), key=len), team))
+        return result
 
     def replace_aliases(self, query: str) -> str:
         replacements = []

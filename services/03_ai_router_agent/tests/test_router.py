@@ -252,6 +252,81 @@ class RouterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["trace"]["decided_at_layer"], "classifier")
         self.assertEqual([x[0] for x in self.clients.calls], ["classify", "general", "generate"])
 
+    def general_payload(self):
+        return next(call[1] for call in self.clients.calls if call[0] == "general")
+
+    async def test_general_names_the_club_behind_a_thai_nickname(self):
+        result = await self.run_query("รู้จักทีมผีแดงมั้ย")
+        self.assertEqual(result["route"], "general_ai")
+        self.assertEqual(self.general_payload()["query"],
+                         "รู้จักทีมผีแดงมั้ย\n(ชื่อทีมในคำถาม: ผีแดง = Manchester United FC)")
+        generate = next(call[1] for call in self.clients.calls if call[0] == "generate")
+        self.assertEqual(generate["query"], "รู้จักทีมผีแดงมั้ย")
+        self.assertEqual(result["answer"], "กฎฟุตบอล")
+
+    async def test_general_names_every_nicknamed_club(self):
+        await self.run_query("หงส์แดงกับผีแดงทำไมถึงเป็นคู่ปรับกัน")
+        self.assertTrue(self.general_payload()["query"].endswith(
+            "(ชื่อทีมในคำถาม: หงส์แดง = Liverpool FC, ผีแดง = Manchester United FC)"))
+
+    async def test_general_query_stays_as_asked_without_a_nickname(self):
+        for query in ("ฟุตบอลเล่นกี่คน", "รู้จัก Arsenal มั้ย"):
+            with self.subTest(query=query):
+                self.clients.calls.clear()
+                await self.run_query(query)
+                self.assertEqual(self.general_payload()["query"], query)
+
+    async def test_general_nickname_note_in_english(self):
+        result = await self.router.route({**self.request, "query": "do you know the red devils",
+                                          "user": {**self.request["user"], "language": "en"}})
+        self.assertEqual(result["route"], "general_ai")
+        self.assertEqual(self.general_payload()["query"],
+                         "do you know the red devils\n(Teams named in the question: red devils = Manchester United FC)")
+
+    async def test_grounded_generation_sees_the_club_behind_a_nickname(self):
+        # The generation LLM read หงส์แดง as Man United while the chunks and team_ids were Liverpool.
+        self.clients.chunks = [{"text": "Liverpool FC rank 6", "source": {
+            "doc_id": "standings-2026", "title": "Standings", "category": "standings",
+            "origin": "football-data.org", "ref": 1}}]
+        result = await self.run_query("หงส์แดงอยู่อันดับที่เท่าไหร่")
+        self.assertEqual(result["route"], "football_rag")
+        generate = next(call[1] for call in self.clients.calls if call[0] == "generate")
+        self.assertEqual(generate["query"],
+                         "หงส์แดงอยู่อันดับที่เท่าไหร่\n(ชื่อทีมในคำถาม: หงส์แดง = Liverpool FC)")
+        self.assertEqual(generate["scope_team_ids"], [64])
+
+    async def test_llm_classifier_sees_the_club_behind_a_nickname(self):
+        self.clients.classifier = {"data": {"label": "general_football", "score": 0.4}}
+        await self.run_query("ผึ้งแดงคือทีมไหน")
+        llm = next(call[1] for call in self.clients.calls if call[0] == "llm")
+        self.assertEqual(llm, "ผึ้งแดงคือทีมไหน\n(ชื่อทีมในคำถาม: ผึ้งแดง = Brentford FC)")
+
+    async def test_a_named_club_is_never_out_of_scope_for_the_model_layers(self):
+        self.clients.classifier = {"data": {"label": "general_football", "score": 0.4}}
+        self.clients.llm_intent = "out_of_scope"
+        result = await self.run_query("ไก่เดือยทองเล่นสนามไหน")
+        self.assertEqual(result["route"], "general_ai")
+        self.assertEqual(result["trace"]["intent"], "general_football")
+        self.clients.calls.clear()
+        self.clients.classifier = {"data": {"label": "out_of_scope", "score": 0.9}}
+        result = await self.run_query("ผีแดงกับเรือใบอยู่เมืองเดียวกันไหม")
+        self.assertEqual(result["route"], "general_ai")
+
+    async def test_out_of_scope_stands_without_a_clearly_named_club(self):
+        self.clients.classifier = {"data": {"label": "general_football", "score": 0.4}}
+        self.clients.llm_intent = "out_of_scope"
+        for query in ("วันนี้กินอะไรดี", "หนังผีเรื่องไหนน่ากลัว"):
+            with self.subTest(query=query):
+                self.clients.calls.clear()
+                result = await self.run_query(query)
+                self.assertEqual(result["route"], "decline")
+                llm = next(call[1] for call in self.clients.calls if call[0] == "llm")
+                self.assertEqual(llm, query)
+
+    async def test_gambling_about_a_nicknamed_club_is_still_declined(self):
+        result = await self.run_query("ราคาบอลผีแดงคืนนี้")
+        self.assertEqual(result["route"], "decline")
+
     async def test_low_classifier_uses_llm(self):
         self.clients.classifier = {"data": {"label": "general_football", "score": 0.4}}
         result = await self.run_query("ฟุตบอลเล่นกี่คน")
@@ -553,7 +628,7 @@ class MultiQueryRouterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(second["filters"], first["filters"])
         self.assertEqual(self.contexts(), ["a", "b"])
         [generate] = [call[1] for call in self.clients.calls if call[0] == "generate"]
-        self.assertEqual(generate["query"], self.QUERY)
+        self.assertEqual(generate["query"].splitlines()[0], self.QUERY)  # not the English query
         self.assertEqual(result["trace"]["multi_query"], "applied")
         self.assertEqual(result["trace"]["search_query_en"], self.ENGLISH)
         steps = [step["name"] for step in result["trace"]["steps"]]

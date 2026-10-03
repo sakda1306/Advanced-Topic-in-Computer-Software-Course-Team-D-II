@@ -190,6 +190,8 @@ class ServiceClients:
                   "player_info covers squads and named-player profiles or individual statistics, not league-wide rankings. "
                   "trivia_history covers past seasons, historical records, and all-time rankings. "
                   f"{chat_note}"
+                  "A note in parentheses after the question names the Premier League clubs behind Thai "
+                  "nicknames; those names are Premier League clubs, so the question is about football. "
                   "Do not answer the question. Gambling and non-football requests are out_of_scope. "
                   "Ambiguous team or match references are clarify."
                   )

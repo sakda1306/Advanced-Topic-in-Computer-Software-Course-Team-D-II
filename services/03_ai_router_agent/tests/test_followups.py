@@ -47,4 +47,5 @@ class FollowupCaseTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(result["trace"]["filters"].get("team_ids"), case["team_ids"])
                 for name, payload, _ in clients.calls:
                     if name in ("generate", "general"):
-                        self.assertEqual(payload["query"], case["query"])
+                        # The user's own question, never the rewrite; a team note may follow it.
+                        self.assertEqual(payload["query"].splitlines()[0], case["query"])

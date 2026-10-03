@@ -15,6 +15,7 @@
 |---|---|---|
 | 1 | vocabulary mismatch | `app/search/aliases.py` — ชื่อเล่นทีมไทย/อังกฤษ → ชื่อทางการในคำค้น BM25 · ฝั่ง vector ใช้โมเดล multilingual กับ `query` ที่ router เขียนเป็นอังกฤษ (ดูผลวัด) |
 | 2 | data quality | `app/kb/trivia.py` — 1,996 ข้อ → ตัดข้อซ้ำ 39 · ตัดข้อขัดแย้ง 2 กลุ่ม (523/1839, 1804/1838) → 1,953 เอกสาร · เอกสารข้อมูลสด upsert ทับด้วย doc_id |
+| 2b | ฉายาไทยไม่มีในคลัง | `data/thai_nicknames_qa.txt` — ฉายาไทยของ 20 สโมสรและที่มา (ผีแดง หงส์แดง เรือใบ ฯลฯ) · doc_id `trivia-2001` ขึ้นไป · แยกไฟล์เพื่อไม่ให้ golden set ของคลัง trivia เปลี่ยน · ingest พร้อมคลัง trivia ตอนเริ่ม container |
 | 3 | chunking | `app/kb/chunking.py` — trivia 1 คู่ถาม-ตอบ = 1 chunk · เอกสารอื่นตัดที่ `## ` |
 | 5 | golden set เอียง | `scripts/build_golden.py` + `scripts/eval_retrieval.py` — 60 ข้อจริงตามสัดส่วนหมวดของคลัง · partial เก็บหัวข้อไม่ใช่คำขึ้นต้นประโยค · ผลอยู่ในหัวข้อ "ผลวัด" ด้านล่าง |
 
@@ -24,6 +25,7 @@
 |---|---|---|
 | `KB_DB_PATH` | `/data/kb.sqlite` | อยู่ใน volume |
 | `TRIVIA_FILE` | `data/football_trivia_qa.txt` | |
+| `NICKNAME_FILE` | `data/thai_nicknames_qa.txt` | ว่าง = ไม่โหลด |
 | `EMBEDDING_MODEL` | `paraphrase-multilingual-MiniLM-L12-v2` | เปลี่ยนแล้วตอนเริ่มจะ embed ใหม่ทั้งหมดเอง |
 | `HF_HOME` | ค่าของไลบรารี | ชี้ไปที่ volume เพื่อไม่ต้องดาวน์โหลดโมเดลทุกครั้ง |
 | `RERANK_MODEL` | ว่าง | ว่าง = ปิด · แนะนำ `cross-encoder/ms-marco-MiniLM-L-6-v2` หลังวัดบนข้อมูลและเครื่องจริง (ดูผลวัด) · เปิดแล้ว image ควรมีโมเดลนี้ใน `HF_HOME` |

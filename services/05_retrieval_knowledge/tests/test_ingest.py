@@ -30,3 +30,21 @@ async def test_second_ingest_embeds_nothing(tmp_path: Path) -> None:
     second = await ingest(settings, embedder)
     assert second.index_version == first.index_version
     assert embedder.calls == []
+
+
+async def test_ingest_adds_the_thai_nickname_entries(tmp_path: Path) -> None:
+    trivia = tmp_path / "trivia.txt"
+    trivia.write_text(SAMPLE, encoding="utf-8")
+    nicknames = tmp_path / "nicknames.txt"
+    nicknames.write_text(
+        "[หมวด: Premier League Club Nicknames]\n"
+        "Q: Which Premier League club do Thai fans call ผีแดง, and why?\n"
+        "A: Manchester United. ผีแดง means Red Devils.\n",
+        encoding="utf-8",
+    )
+    settings = make_settings(tmp_path, trivia_file=str(trivia), nickname_file=str(nicknames))
+    result = await ingest(settings, FakeEmbedder())
+    assert (result.kept, result.nicknames) == (2, 1)
+    embedder = FakeEmbedder()
+    await ingest(settings, embedder)
+    assert embedder.calls == []

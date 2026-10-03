@@ -3,7 +3,7 @@ import time
 
 from .chat import STEP_TIMEOUT as CHAT_STEP_TIMEOUT
 from .chat import favorite_name, system_prompt, template, user_message, validate_reply
-from .condense import condense_enabled, needs_condense, rules_resolved, validate
+from .condense import _strict, condense_enabled, needs_condense, rules_resolved, validate
 from .decisions import (HISTORICAL, MATCHWEEK_PATTERN, classify_intent, decide, enrich, from_intent,
                         historical_scorer_season, league_wide_scorer_query, normalize_thai,
                         prediction_kind)
@@ -22,6 +22,21 @@ class UpstreamError(Exception):
         super().__init__(f"{service}: {status or 'unavailable'}")
         self.service = service
         self.status = status
+
+
+def with_team_note(query: str, teams: TeamDirectory, language: str) -> str:
+    """The question for an LLM step, naming the club behind each nickname.
+
+    The LLMs have no team directory: /general mixed up ผีแดง (Man United) with หงส์แดง (Liverpool),
+    grounded generation answered หงส์แดง with Man United's row of the table, and the classifier called
+    ผึ้งแดง (Brentford) out of scope. Short Thai aliases such as ผี stay unnamed.
+    """
+    named = _strict(teams).nicknames(query)
+    if not named:
+        return query
+    label = "ชื่อทีมในคำถาม" if language == "th" else "Teams named in the question"
+    pairs = ", ".join(f"{written} = {team.name}" for written, team in named)
+    return f"{query}\n({label}: {pairs})"
 
 
 class Router:
@@ -158,7 +173,8 @@ class Router:
                 if decision is None:
                     try:
                         llm_at = time.monotonic()
-                        raw = await asyncio.wait_for(self.clients.llm_decide(routing_query, request_id), timeout=8)
+                        noted = with_team_note(routing_query, self.teams, user.get("language", "th"))
+                        raw = await asyncio.wait_for(self.clients.llm_decide(noted, request_id), timeout=8)
                         step("router.llm", llm_at)
                         add_usage(raw)
                         decision = from_intent(raw.get("intent", ""), float(raw.get("confidence") or 0.5))
@@ -173,6 +189,13 @@ class Router:
                                                         f"{rewritten} {routing_query}".strip())
                     except (UpstreamError, ValueError, TypeError, asyncio.TimeoutError):
                         trace["fallback"] = "llm_unavailable"
+                if (decision is not None and decision.route == "decline" and decision.layer != "guard"
+                        and _strict(self.teams).find(routing_query)):
+                    # The rules already decline gambling and other topics; a model calling a question about
+                    # a clearly named club out of scope did not know the club.
+                    decision = enrich(from_intent("general_football", decision.confidence, decision.layer),
+                                      routing_query, context, history, self.teams, user.get("favorite_team_id"))
+                    decision.reasoning += " (ถามถึงทีมพรีเมียร์ลีก)"
                 if decision is None:
                     decision = from_intent("clarify", 0.5, "guard")
                     decision.reasoning = "ยังระบุเจตนาของคำถามไม่ได้"
@@ -273,8 +296,10 @@ class Router:
                                     for index, chunk in enumerate(chunks[:5], 1)]
                         try:
                             generated_at = time.monotonic()
+                            language = user.get("language", "th")
                             result = await self.clients.generate({"request_id": request_id, "mode": "grounded",
-                                "query": query, "language": user.get("language", "th"), "contexts": contexts,
+                                "query": with_team_note(query, self.teams, language), "language": language,
+                                "contexts": contexts,
                                 "scope_team_ids": decision.team_ids,
                                 "draft": None, "history": history}, request_id)
                             step("generation.grounded", generated_at)
@@ -330,8 +355,10 @@ class Router:
                 else:
                     try:
                         general_at = time.monotonic()
-                        result = await self.clients.general({"request_id": request_id, "query": query,
-                            "history": history, "language": user.get("language", "th")}, request_id)
+                        language = user.get("language", "th")
+                        result = await self.clients.general({"request_id": request_id,
+                            "query": with_team_note(query, self.teams, language),
+                            "history": history, "language": language}, request_id)
                         step("engines.general", general_at)
                         engines.append("general_ai")
                         add_usage(result)
