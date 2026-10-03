@@ -25,4 +25,12 @@ feature/<เลข>-<โมดูล>-<github-username>   ← branch ของ�
 
 ## สถานะ
 
-ขั้นออกแบบ — ยังไม่มีโค้ด · service จะอยู่ใน `services/` และรันทั้งระบบด้วย `make up` (Docker Compose)
+กำลังพัฒนา (อัปเดต 26 ก.ย. 2026)
+
+| service | สถานะ |
+|---|---|
+| 02 API Backend · 05 Retrieval | อยู่ใน `develop` แล้ว |
+| 01 Web (#4) · 03 Router (#15) · 06 Generation (#11) · 07 Football Data (#6) · Deploy (#16) | เปิด PR รอรีวิว |
+| 04 AI Engines | ยังไม่เปิด PR (branch `feature/04-ai-model-selection-phonlakrit`) |
+
+รันทั้งระบบด้วย `make up` (Docker Compose) ได้หลัง PR ของ Deploy และทุก service merge ครบ
