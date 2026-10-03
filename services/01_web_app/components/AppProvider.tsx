@@ -148,6 +148,19 @@ function useAppState() {
     acceptUser(data.user);
     router.replace("/");
   }
+  async function register(
+    username: string,
+    displayName: string,
+    password: string,
+  ) {
+    if (logoutTask.current) await logoutTask.current;
+    const data = await api<{ user: User }>(
+      "/auth/register",
+      body({ username, display_name: displayName, password }),
+    );
+    acceptUser(data.user);
+    router.replace("/");
+  }
   function logout(): Promise<void> {
     if (logoutTask.current) return logoutTask.current;
     clearAccount();
@@ -334,6 +347,7 @@ function useAppState() {
     loggingOut,
     changeTeam,
     login,
+    register,
     logout,
     entries,
     sessions,

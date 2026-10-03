@@ -27,12 +27,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     router = useRouter();
   const [historyOpen, setHistoryOpen] = useState(false);
   const browsing = app.browsingTeam ?? app.team;
-  const loginPage = path === "/login",
+  const authPage = path === "/login" || path === "/register",
     adminPage = path.startsWith("/admin");
   useEffect(() => {
-    if (app.checked && !app.user && !loginPage && !app.authError)
+    if (app.checked && !app.user && !authPage && !app.authError)
       router.replace("/login");
-  }, [app.checked, app.user, app.authError, loginPage, router]);
+  }, [app.checked, app.user, app.authError, authPage, router]);
   const links = adminPage
     ? ([
         ["/admin", "ภาพรวม", BarChart3],
@@ -54,7 +54,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       ] as const);
   return (
     <div
-      className={`site-shell ${loginPage ? "" : "panball-shell"}`}
+      className={`site-shell ${authPage ? "" : "panball-shell"}`}
       style={
         {
           "--club": app.team.color,
@@ -76,7 +76,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <a className="skip-link" href="#content">
         ข้ามไปเนื้อหา
       </a>
-      {loginPage ? (
+      {authPage ? (
         children
       ) : !app.checked ? (
         <Loading />

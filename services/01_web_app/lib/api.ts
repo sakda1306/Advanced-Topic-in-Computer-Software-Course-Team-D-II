@@ -38,6 +38,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     if (
       response.status === 401 &&
       path !== "/auth/login" &&
+      path !== "/auth/register" &&
       path !== "/auth/me"
     )
       window.dispatchEvent(new Event("pitchside:expired"));

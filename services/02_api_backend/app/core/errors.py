@@ -15,6 +15,7 @@ class ErrorCode(StrEnum):
     NOT_FOUND = "NOT_FOUND"
     METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED"
     MESSAGE_NOT_READY = "MESSAGE_NOT_READY"
+    USERNAME_TAKEN = "USERNAME_TAKEN"
     CANNOT_MODIFY_SELF = "CANNOT_MODIFY_SELF"
     REPORT_NOT_EDITABLE = "REPORT_NOT_EDITABLE"
     REPORT_ALREADY_PUBLISHED = "REPORT_ALREADY_PUBLISHED"
@@ -51,6 +52,7 @@ ERROR_SPECS: dict[ErrorCode, ErrorSpec] = {
     ErrorCode.MESSAGE_NOT_READY: ErrorSpec(
         409, "Message not ready", "คำตอบนี้ยังบันทึกไม่เสร็จ ลองใหม่อีกครั้ง"
     ),
+    ErrorCode.USERNAME_TAKEN: ErrorSpec(409, "Username taken", "ชื่อผู้ใช้นี้ถูกใช้แล้ว"),
     ErrorCode.CANNOT_MODIFY_SELF: ErrorSpec(
         409, "Cannot modify self", "แก้ role หรือระงับบัญชีของตัวเองไม่ได้"
     ),

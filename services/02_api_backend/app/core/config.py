@@ -46,6 +46,7 @@ class Settings(BaseSettings):
 
     chat_rate_limit_per_minute: int = 20
     login_rate_limit_per_minute: int = 10
+    register_rate_limit_per_minute: int = 30
     max_body_bytes: int = 64 * 1024
     history_limit: int = 10
     feedback_wait_seconds: float = 3.0

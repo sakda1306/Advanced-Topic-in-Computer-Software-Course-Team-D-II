@@ -9,6 +9,7 @@ it("does not treat an unauthenticated session check as an expired login", async 
   );
   const dispatch = vi.spyOn(window, "dispatchEvent");
   await expect(api("/auth/me")).rejects.toMatchObject({ status: 401 });
+  await expect(api("/auth/register")).rejects.toMatchObject({ status: 401 });
   expect(dispatch).not.toHaveBeenCalledWith(
     expect.objectContaining({ type: "pitchside:expired" }),
   );

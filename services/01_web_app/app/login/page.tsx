@@ -2,9 +2,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Eye, EyeOff } from "lucide-react";
+import { AuthStory } from "../../components/AuthStory";
 import { useApp } from "../../components/AppProvider";
 import { ErrorBox } from "../../components/Ui";
-import { teams } from "../../lib/teams";
 export default function Login() {
   const app = useApp();
   const [username, setUsername] = useState("");
@@ -14,50 +14,7 @@ export default function Login() {
   const [error, setError] = useState<Error>();
   return (
     <main className="login-page" id="content">
-      <section className="login-story">
-        <div className="wordmark">
-          <img
-            className="panda-mark"
-            src="/panda-logo.svg"
-            alt=""
-            width={52}
-            height={52}
-          />
-          <span>
-            PANBALL<small>FOOTBALL BRINGS US CLOSER</small>
-          </span>
-        </div>
-        <div className="login-headline">
-          <span className="eyebrow">SOME PLACES THAT LIVE FOREVER.</span>
-          <h1>
-            YOUR CLUB.
-            <br />
-            YOUR WORLD.
-          </h1>
-          <p>ทุกเรื่องของทีมที่คุณรัก</p>
-          <div className="login-teams" aria-label="เลือกธีมทีม">
-            {teams.map((team) => (
-              <button
-                key={team.key}
-                aria-label={team.name}
-                aria-pressed={team.key === app.team.key}
-                onClick={() => void app.changeTeam(team.key)}
-              >
-                <img
-                  src={"/crests/" + team.teamId + ".png"}
-                  alt=""
-                  width={56}
-                  height={56}
-                />
-              </button>
-            ))}
-          </div>
-          <p className="club-manifesto">
-            DIFFERENT COLOURS. SAME PASSION.
-            <br />A BRIGHTER TOMORROW.
-          </p>
-        </div>
-      </section>
+      <AuthStory />
       <section className="login-form-area">
         <div className="login-form">
           {app.loggingOut && (
@@ -131,7 +88,9 @@ export default function Login() {
               </button>
             </form>
           )}
-          <small>ใช้บัญชีผู้ใช้หรือผู้ดูแลระบบที่ได้รับจากทีมงาน</small>
+          <p className="auth-switch">
+            ยังไม่มีบัญชี? <Link href="/register">สมัครสมาชิก</Link>
+          </p>
           <div
             className="login-pet"
             role="img"

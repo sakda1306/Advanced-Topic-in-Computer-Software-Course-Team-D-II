@@ -5,15 +5,17 @@ from __future__ import annotations
 import uuid
 
 from sqlalchemy import Subquery, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import iso, utcnow
 from app.core.errors import AppError, ErrorCode
-from app.core.security import DUMMY_HASH, verify_password
+from app.core.security import DUMMY_HASH, hash_password, verify_password
 from app.db.models import Message, User
 from app.response_log.cursor import before_cursor, encode_cursor
 from app.schemas.admin import AdminUser, UserPatch
 from app.schemas.common import Page
+from app.schemas.user import RegisterRequest
 from app.services.audit import write_audit
 
 
@@ -27,6 +29,26 @@ async def authenticate(db: AsyncSession, username: str, password: str) -> User:
         raise AppError(ErrorCode.ACCOUNT_DISABLED)
     user.last_login_at = utcnow()
     await db.commit()
+    return user
+
+
+async def register_user(db: AsyncSession, body: RegisterRequest) -> User:
+    if await db.scalar(select(User.id).where(User.username == body.username)) is not None:
+        raise AppError(ErrorCode.USERNAME_TAKEN)
+    user = User(
+        username=body.username,
+        display_name=body.display_name,
+        password_hash=hash_password(body.password),
+        role="user",
+        disabled=False,
+        language="th",
+    )
+    db.add(user)
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise AppError(ErrorCode.USERNAME_TAKEN) from exc
     return user
 
 

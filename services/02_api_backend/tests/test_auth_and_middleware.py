@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import httpx
+from sqlalchemy import select
 
+from app.core.security import verify_password
+from app.db.models import User
 from tests.conftest import DEMO_PASSWORD, assert_problem
 
 
@@ -36,6 +39,66 @@ async def test_login_sets_httponly_cookie(client: httpx.AsyncClient) -> None:
     me = await client.get("/api/auth/me")
     assert me.status_code == 200
     assert me.json()["user"]["username"] == "demo1"
+
+
+async def test_register_creates_user_and_session(client: httpx.AsyncClient, container) -> None:
+    response = await client.post(
+        "/api/auth/register",
+        json={
+            "username": "New_Fan",
+            "display_name": "  Football Fan  ",
+            "password": "long-pass-123",
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["user"]["username"] == "new_fan"
+    assert response.json()["user"]["display_name"] == "Football Fan"
+    assert response.json()["user"]["role"] == "user"
+    assert "HttpOnly" in response.headers["set-cookie"]
+    async with container.sessions() as db:
+        user = await db.scalar(select(User).where(User.username == "new_fan"))
+        assert user is not None
+        assert user.password_hash != "long-pass-123"
+        assert verify_password("long-pass-123", user.password_hash)
+    assert (await client.get("/api/auth/me")).json()["user"]["username"] == "new_fan"
+    await client.post("/api/auth/logout")
+    login = await client.post(
+        "/api/auth/login", json={"username": "NEW_FAN", "password": "long-pass-123"}
+    )
+    assert login.status_code == 200
+
+
+async def test_register_rejects_duplicate_username(client: httpx.AsyncClient) -> None:
+    response = await client.post(
+        "/api/auth/register",
+        json={"username": "DEMO1", "display_name": "Other", "password": "long-pass-123"},
+    )
+    assert_problem(response, 409, "USERNAME_TAKEN")
+
+
+async def test_register_rejects_invalid_input(client: httpx.AsyncClient) -> None:
+    for username, display_name, password in [
+        ("a", "Fan", "long-pass-123"),
+        ("bad name", "Fan", "long-pass-123"),
+        ("new_fan", "  ", "long-pass-123"),
+        ("new_fan", "Fan", "short"),
+        ("new_fan", "Fan", "😀" * 20),
+    ]:
+        response = await client.post(
+            "/api/auth/register",
+            json={"username": username, "display_name": display_name, "password": password},
+        )
+        assert_problem(response, 422, "VALIDATION_ERROR")
+
+
+async def test_register_rate_limit(client: httpx.AsyncClient, container) -> None:
+    for _ in range(container.settings.register_rate_limit_per_minute):
+        await container.store.hit("rl:register:127.0.0.1", 60)
+    response = await client.post(
+        "/api/auth/register",
+        json={"username": "new_fan", "display_name": "Fan", "password": "long-pass-123"},
+    )
+    assert_problem(response, 429, "RATE_LIMITED")
 
 
 async def test_login_wrong_password(client: httpx.AsyncClient) -> None:

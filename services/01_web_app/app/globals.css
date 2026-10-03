@@ -1084,6 +1084,29 @@ footer {
   min-height: 52px;
   justify-content: space-between;
 }
+.auth-hint,
+.auth-field-error {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.auth-hint {
+  color: var(--muted);
+}
+.auth-field-error {
+  color: #ff8f8f;
+}
+.auth-switch {
+  margin: 10px 0 0;
+  color: var(--muted);
+}
+.auth-switch a {
+  color: var(--club-bright);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .login-pet {
   width: 144px;
   height: 156px;

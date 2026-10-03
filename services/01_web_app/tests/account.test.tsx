@@ -30,6 +30,7 @@ async function setup() {
     async (path: string, init?: RequestInit): Promise<Response> => {
       if (path === "/api/auth/me") return json({ user: user("A") });
       if (path === "/api/auth/login") return json({ user: user("B") });
+      if (path === "/api/auth/register") return json({ user: user("C") }, 201);
       if (path === "/api/sessions") return json({ sessions: [] });
       if (path === "/api/auth/logout") return json({ ok: true });
       if (path === "/api/me/preferences")
@@ -79,6 +80,22 @@ it("clears every account's conversation and sends a fresh session after logout/l
   const calls = fetcher.mock.calls.filter(([path]) => path === "/api/chat");
   expect(JSON.parse(String(calls[1][1]?.body)).session_id).toBeNull();
   expect(screen.queryByText("private question A")).not.toBeInTheDocument();
+});
+it("accepts a newly registered account and opens the home page", async () => {
+  const fetcher = await setup();
+  await act(async () => {
+    await app.register("new_fan", "Football Fan", "long-pass-123");
+  });
+  expect(app.user?.id).toBe("C");
+  expect(navigation.replace).toHaveBeenLastCalledWith("/");
+  const request = fetcher.mock.calls.find(
+    ([path]) => path === "/api/auth/register",
+  );
+  expect(JSON.parse(String(request?.[1]?.body))).toEqual({
+    username: "new_fan",
+    display_name: "Football Fan",
+    password: "long-pass-123",
+  });
 });
 it("expires the account on 401 and ignores a late answer after switching identity", async () => {
   const fetcher = await setup();
