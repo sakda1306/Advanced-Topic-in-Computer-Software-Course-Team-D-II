@@ -119,9 +119,9 @@ def test_routed_field() -> None:
 
 def test_historical_items_are_hand_written_archive_questions() -> None:
     items = historical_items()
-    assert len(items) == len(HISTORICAL_TH) == 20
-    assert len({item["id"] for item in items}) == 20
-    assert len({item["query_th"] for item in items}) == 20
+    assert len(items) == len(HISTORICAL_TH) == 32
+    assert len({item["id"] for item in items}) == 32
+    assert len({item["query_th"] for item in items}) == 32
     for item in items:
         assert item["kind"] == "historical_th"
         assert item["answerable"] and not item["need_all"]

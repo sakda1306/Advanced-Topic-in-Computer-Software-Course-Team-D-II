@@ -430,6 +430,8 @@ HISTORICAL_DOC: dict[str, Any] = {
             "topic": "head_to_head",
             "season": None,
         },
+        {"doc_id": "hist-club-leicester-city", "topic": "club_record", "season": None},
+        {"doc_id": "hist-records", "topic": "league_records", "season": None},
     ],
 )
 async def test_historical_documents_are_accepted_and_filterable(
@@ -453,6 +455,9 @@ async def test_historical_documents_are_accepted_and_filterable(
         "hist-team-2004-Arsenal",
         "hist-team-2004",
         "hist-h2h-arsenal_chelsea",
+        "hist-club-",
+        "hist-records-2025",
+        "hist-club-Leicester",
         "trivia-0001",
     ],
 )
@@ -461,3 +466,18 @@ async def test_historical_doc_ids_keep_their_locked_format(
 ) -> None:
     response = await upsert(client, {**HISTORICAL_DOC, "doc_id": doc_id})
     assert response.status_code == 422
+
+
+async def test_wikidata_documents_are_accepted(client: httpx.AsyncClient) -> None:
+    coach = doc(
+        doc_id="coach-2026-team-66",
+        category="player",
+        origin="wikidata",
+        matchweek=None,
+        team_ids=[66],
+        text="Who is the head coach of Manchester United FC? Michael Carrick.",
+    )
+    response = await upsert(client, coach)
+    assert response.status_code == 200
+    found = await doc_ids_found(client, "Manchester United head coach Carrick")
+    assert "coach-2026-team-66" in found

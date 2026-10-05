@@ -53,6 +53,10 @@ def test_no_filter_means_every_chunk() -> None:
     assert snapshot.allowed(SearchFilters()) is None
 
 
+def test_a_topic_filter_is_not_empty() -> None:
+    assert not SearchFilters(topic=("club_record",)).is_empty()
+
+
 @pytest.mark.parametrize(
     ("filters", "expected"),
     [
@@ -68,6 +72,9 @@ def test_no_filter_means_every_chunk() -> None:
         ),
         (SearchFilters(date_to="2026-09-20"), {"match-2026-mw05-57-61"}),
         (SearchFilters(category=("trivia",), season="2026"), set()),
+        (SearchFilters(topic=("World Cup",)), {"trivia-0003"}),
+        (SearchFilters(topic=("World Cup", "Ballon d'Or")), {"trivia-0001", "trivia-0003"}),
+        (SearchFilters(topic=("World Cup",), team_ids=(57,)), set()),
     ],
 )
 def test_filters(filters: SearchFilters, expected: set[str]) -> None:

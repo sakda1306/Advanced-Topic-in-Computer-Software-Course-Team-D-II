@@ -139,6 +139,7 @@ services:
       ENGINES_URL: http://engines:8000
       REPORT_AUTO_PUBLISH: ${REPORT_AUTO_PUBLISH:-false}
       PLAYER_INDEX_ENABLED: ${PLAYER_INDEX_ENABLED:-false}
+      COACH_INDEX_ENABLED: ${COACH_INDEX_ENABLED:-false}
     depends_on:
       postgres: {condition: service_healthy}
       retrieval: {condition: service_started}

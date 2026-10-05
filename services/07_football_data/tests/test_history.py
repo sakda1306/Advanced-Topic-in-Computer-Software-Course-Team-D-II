@@ -9,10 +9,15 @@ from sqlalchemy import func, select
 from app.db import HistoricalMatch, HistoricalStanding, make_database
 from app.history import (
     calculate_table,
+    historical_document,
+    load_fjelstul_champions,
     make_documents,
     normalize,
     parse_season,
+    relegated,
     resolve,
+    season_label,
+    table_stats,
     verify_table,
 )
 from scripts.ingest_history import ROOT, build_dataset, persist
@@ -137,7 +142,47 @@ def test_all_pinned_seasons_and_all_team_aliases():
     assert sum(map(len, seasons.values())) == 13166
     assert len(clubs) == 51
     assert sum(map(len, tables.values())) == 686
-    assert len(docs) == 1661
+    assert len(docs) == 1713
+    topics = {t: sum(d["topic"] == t for d in docs) for t in ("club_record", "league_records")}
+    assert topics == {"club_record": 51, "league_records": 1}
+    records = next(d for d in docs if d["doc_id"] == "hist-records")["text"]
+    # Cross-checked against Wikidata (P1346 winners of Q9448 seasons) on 2026-10-04.
+    assert (
+        "Manchester United FC 13 · Manchester City FC 8 · Chelsea FC 5 · Arsenal FC 4 · "
+        "Liverpool FC 2 · Blackburn Rovers FC 1 · Leicester City FC 1.\n"
+    ) in records
+    assert "7 different clubs have won the Premier League.\n" in records
+    assert "most all-time Premier League points? Manchester United FC (2614).\n" in records
+    assert "runner-up the most times in the Premier League? Arsenal FC (9).\n" in records
+    assert "relegated from the Premier League the most times? Norwich City FC (6).\n" in records
+    assert (
+        "Which club went a whole Premier League season unbeaten? Arsenal FC 2003/04.\n" in records
+    )
+    united = next(d for d in docs if d["doc_id"] == "hist-club-manchester-united")["text"]
+    assert "Premier League titles: 13 (" in united
+    assert "Seasons in the Premier League: 34 of 34. Relegations: 0.\n" in united
+    spurs = next(d for d in docs if d["doc_id"] == "hist-club-tottenham")["text"]
+    assert "Premier League titles: 0 (never won the Premier League).\n" in spurs
+    # All eras: Fjelstul matches Wikidata (2026-10-04) for every club from 1892/93; Wikidata
+    # leaves out the single-division seasons 1888/89-1891/92 (Everton 1890/91, Sunderland
+    # 1891/92, Preston 1888/89 and 1889/90), which the records count and explain.
+    by_id = {d["doc_id"]: d["text"] for d in docs}
+    for slug, line in {
+        "liverpool": "20 (18 First Division, 2 Premier League)",
+        "manchester-united": "20 (7 First Division, 13 Premier League)",
+        "arsenal": "14 (10 First Division, 4 Premier League)",
+        "everton": "9 (9 First Division, 0 Premier League)",
+        "chelsea": "6 (1 First Division, 5 Premier League)",
+        "sheffield-wednesday": "4 (4 First Division, 0 Premier League)",
+    }.items():
+        assert f"won in all eras? {line}.\n" in by_id[f"hist-club-{slug}"], slug
+    all_eras = by_id["hist-records"]
+    assert "in all eras? Liverpool FC, Manchester United FC (20).\n" in all_eras
+    assert "Preston North End 2 (2 First Division + 0 Premier League)" in all_eras
+    assert "24 different clubs have been English top-flight champions. Before 1892/93" in all_eras
+    assert "1888/89: Preston North End (runners-up Aston Villa FC)\n" in all_eras
+    assert "1989/90: Liverpool FC (runners-up Aston Villa FC)\n" in all_eras
+    assert "No First Division football 1939/40–1945/46 (Second World War).\n" in all_eras
     from app.history import season_scorers
 
     assert [p["goals"] for p in season_scorers(seasons["2025"])[:3]] == [27, 22, 17]
@@ -239,3 +284,120 @@ def test_current_premier_league_clubs_keep_their_team_id_in_the_archive():
     clubs = json.loads(path.read_text("utf-8"))
     current = {"west-ham": 563, "wolves": 76, "burnley": 328, "arsenal": 57, "sunderland": 71}
     assert {slug: clubs[slug]["team_id"] for slug in current} == current
+
+
+def test_season_label_handles_the_century_rollover():
+    assert season_label("2004") == "2004/05"
+    assert season_label("1999") == "1999/00"
+
+
+def test_relegated_sorts_rows_and_drops_four_in_1994():
+    rows = [{"club_slug": f"c{p}", "position": p} for p in (3, 1, 6, 2, 5, 4)]
+    assert [r["position"] for r in relegated("1994", rows)] == [3, 4, 5, 6]
+    assert [r["position"] for r in relegated("1995", rows)] == [4, 5, 6]
+
+
+def test_table_stats_shows_an_adjustment_only_when_there_is_one():
+    row = {
+        "played": 38,
+        "wins": 10,
+        "draws": 5,
+        "losses": 23,
+        "goals_for": 30,
+        "goals_against": 60,
+        "goal_difference": -30,
+        "points": 26,
+    }
+    assert table_stats(row) == "P38 W10 D5 L23 GF30 GA60 GD-30 Pts26"
+    assert table_stats({**row, "point_adjustment": 0}) == "P38 W10 D5 L23 GF30 GA60 GD-30 Pts26"
+    assert table_stats({**row, "point_adjustment": -9}).endswith("Pts26; point adjustment -9")
+
+
+def test_historical_document_adds_credit_and_known_team_ids():
+    clubs = {
+        "arsenal": {"name": "Arsenal FC", "team_id": 57},
+        "wimbledon": {"name": "Wimbledon FC", "team_id": None},
+    }
+    doc = historical_document(
+        clubs,
+        "hist-x",
+        "T",
+        "body",
+        "season_table",
+        "2003",
+        ["wimbledon", "arsenal"],
+        "openfootball",
+        "https://example.com",
+    )
+    assert doc["team_ids"] == [57]
+    assert doc["text"].startswith("body\n## Sources and license\n")
+    assert (doc["category"], doc["matchweek"], doc["date"], doc["fetched_at"]) == (
+        "historical",
+        None,
+        None,
+        None,
+    )
+
+
+FJELSTUL_HEADER = "season,tier,position,team_id,team_name\n"
+EARLY_CLUBS = {
+    "sheffield-wednesday": {"name": "Sheffield Wednesday FC", "fjelstul_team_id": "T-027"},
+    "aston-villa": {"name": "Aston Villa FC", "fjelstul_team_id": "T-002"},
+    "everton": {"name": "Everton FC"},  # no Fjelstul id: never matched
+}
+
+
+def write_standings(tmp_path, lines):
+    path = tmp_path / "standings.csv"
+    path.write_text(FJELSTUL_HEADER + "".join(f"{line}\n" for line in lines), encoding="utf-8")
+    return path
+
+
+def test_loader_maps_former_names_by_team_id(tmp_path):
+    path = write_standings(
+        tmp_path,
+        [
+            "1902,1,1,T-027,The Wednesday",
+            "1902,1,2,T-002,Aston Villa",
+            "1929,1,1,T-027,Sheffield Wednesday",
+            "1929,1,2,T-009,Preston North End",
+        ],
+    )
+    early = load_fjelstul_champions(path, EARLY_CLUBS)
+    assert early["1902"]["champion"] == {
+        "slug": "sheffield-wednesday",
+        "name": "Sheffield Wednesday FC",
+    }
+    assert early["1902"]["runner_up"] == {"slug": "aston-villa", "name": "Aston Villa FC"}
+    assert early["1929"]["champion"]["slug"] == "sheffield-wednesday"
+    assert early["1929"]["runner_up"] == {"slug": None, "name": "Preston North End"}
+
+
+def test_loader_keeps_only_top_two_of_the_top_flight_before_1992(tmp_path):
+    path = write_standings(
+        tmp_path,
+        [
+            "1902,1,1,T-027,The Wednesday",
+            "1902,1,2,T-002,Aston Villa",
+            "1902,1,3,T-009,Preston North End",
+            "1902,2,1,T-009,Preston North End",
+            "1992,1,1,T-002,Aston Villa",
+        ],
+    )
+    assert list(load_fjelstul_champions(path, EARLY_CLUBS)) == ["1902"]
+
+
+@pytest.mark.parametrize(
+    "lines",
+    [
+        ["1902,1,1,T-027,The Wednesday"],
+        [
+            "1902,1,1,T-027,The Wednesday",
+            "1902,1,1,T-002,Aston Villa",
+            "1902,1,2,T-009,Preston North End",
+        ],
+    ],
+)
+def test_loader_fails_without_exactly_one_champion_and_runner_up(tmp_path, lines):
+    with pytest.raises(ValueError, match="1902"):
+        load_fjelstul_champions(write_standings(tmp_path, lines), EARLY_CLUBS)

@@ -4,7 +4,7 @@
 
 Prepared 34 completed seasons (1992/93–2025/26), 13,166 matches, 51 clubs and 686 team-season tables. All 95 openfootball name variants resolve explicitly. Unknown names fail instead of being skipped.
 
-The English document bundle contains 1,661 stable IDs: 34 season tables, 686 team-season summaries and 941 head-to-head summaries. Full results stay in football.historical_matches; tables in football.historical_standings. SQLite history_local.db is used locally and remains separate from current-season DB/index.
+The English document bundle contains 1,713 stable IDs: 34 season tables, 686 team-season summaries, 941 head-to-head summaries, 51 club records (`hist-club-<slug>`) and one league honours and all-time records document (`hist-records`). Club records and league records are computed from the final tables, cover the Premier League era only and say so in a Coverage line. They also count English top-flight titles in all eras: First Division champions and runners-up 1888/89–1991/92 come from the same pinned Fjelstul standings.csv (tier 1), matched to clubs by Fjelstul team id, so former names such as "The Wednesday" count for Sheffield Wednesday. The single-division Football League seasons 1888/89–1891/92 are counted as First Division titles and the documents say so (Wikidata starts the First Division in 1892/93). Full results stay in football.historical_matches; tables in football.historical_standings. SQLite history_local.db is used locally and remains separate from current-season DB/index.
 
 Mapping football-data.org team IDs is conservative: 20 identities verified against the current provider response; other clubs have null until verified. Fjelstul identities are resolved through its teams.csv and included in the generated clubs.json. Slugs do not depend on provider IDs.
 
@@ -40,7 +40,7 @@ Local review update: current-season standings now use one stable `standings-<sea
 
 docs/05_RETRIEVAL_DESIGN.md §10 in develop is a proposal requiring a CONTRACT agreement. This branch does not modify peers' 05, 03 or web modules.
 
-Historical metadata uses category=historical, origin=openfootball|fjelstul, topic=season_table|team_season|head_to_head. Historical fetched_at/date/matchweek are null; h2h season is null. The existing 05 currently rejects the new category/origin/IDs.
+Historical metadata uses category=historical, origin=openfootball|fjelstul, topic=season_table|team_season|head_to_head|club_record|league_records. Club and league records use origin=fjelstul and season=null. Historical fetched_at/date/matchweek are null; h2h season is null. The existing 05 currently rejects the new category/origin/IDs.
 
 Therefore --index is disabled unless HISTORICAL_INDEX_ENABLED=true is explicitly configured **after** agreement and 05 support. Worker also refuses historical writes while disabled. Once supported, --index queues durable outbox tasks in the selected DB and reconciles in batches of at most 50 documents, each bounded by UTF-8 body size.
 
@@ -96,3 +96,10 @@ Latest local review run: **33 passed** for 07 (16.11 seconds), including localho
 Regression coverage includes July 2020 dates in the COVID-delayed 2019/20 season. After regeneration, the final date is 2020-07-26; no July matches are incorrectly assigned to 2019.
 
 Unit/parser tests require no network/key. Full pinned-data tests and cached-real-provider tests skip when local inputs are absent. The optional actual-05 HTTP test remains FakeEmbedder-based, with mocked Generation; historical indexing is not claimed as end-to-end validated.
+
+## Wikidata head coaches (CONTRACT v1.16)
+
+Current head coaches come from Wikidata (CC0) property P286 with qualifiers P580 (start) and P582 (end) and the statement rank. The current coach is the open-ended, non-deprecated statement; a preferred statement wins, then the latest start. 07 queries Wikidata once per primary ingest when `COACH_INDEX_ENABLED` is on and writes `coach-<season>-team-<team_id>` documents; a failed or empty answer keeps the previous documents.
+
+`data/wikidata_clubs.json` maps football-data team IDs to Wikidata QIDs. Each QID was checked on 5 October 2026: the English label is the club name ("Arsenal F.C."), the description reads "association football club in …", and P118 (league) is the Premier League (Q9448). Labels shared by other items were resolved by description: Everton Q5794 (not the Port of Spain club), Manchester City Q50602 (not the Sierra Leone team) and Crystal Palace Q19467 (not the 1861 amateur club). Chelsea Q9616 does not match the label lookup and was taken from its item page. Re-check the file when a promoted club joins the league.
+

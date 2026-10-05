@@ -19,6 +19,9 @@ class FakeClients:
         self.fail_queries = set()
         self.chat_reply = None
         self.llm_intent = "general_football"
+        self.record_chunks = {}
+        self.fail_record = False
+        self.fail_search = False
 
     async def historical_scorer(self, season, request_id):
         self.calls.append(("historical_scorer", season, request_id))
@@ -30,6 +33,12 @@ class FakeClients:
 
     async def search(self, payload, request_id):
         self.calls.append(("search", payload, request_id))
+        if "topic" in (payload.get("filters") or {}):
+            if self.fail_record:
+                raise UpstreamError("retrieval", 422)
+            return {"chunks": self.record_chunks.get(payload["filters"]["team_ids"][0], [])}
+        if self.fail_search:
+            raise UpstreamError("retrieval")
         if payload["query"] in self.fail_queries:
             raise UpstreamError("retrieval")
         if self.search_script:
@@ -86,6 +95,11 @@ class FakeClients:
             raise UpstreamError("llm")
         return {"standalone_query": self.standalone, "changed": True,
                 "token_usage": {"input": 3, "output": 2}}
+
+
+def archive_chunk(doc_id, number=0):
+    return {"chunk_id": f"{doc_id}#c{number}", "text": f"{doc_id} part {number}",
+            "source": {"doc_id": doc_id, "title": doc_id, "category": "historical", "origin": "fjelstul"}}
 
 
 class RouterTests(unittest.IsolatedAsyncioTestCase):
@@ -239,8 +253,120 @@ class RouterTests(unittest.IsolatedAsyncioTestCase):
         self.clients.search = search
         result = await self.run_query("อาร์เซนอลได้แชมป์พรีเมียร์ลีกกี่ครั้ง")
         self.assertEqual(result["route"], "football_rag")
-        self.assertEqual([x[0] for x in self.clients.calls], ["search", "generate"])
+        # The ordinary search stays unfiltered by team; the club record search (v1.15) comes on top.
+        ordinary = [x[1] for x in self.clients.calls if x[0] == "search" and "topic" not in x[1]["filters"]]
+        self.assertEqual(len(ordinary), 1)
+        self.assertNotIn("team_ids", ordinary[0]["filters"])
+        self.assertEqual([x[0] for x in self.clients.calls].count("generate"), 1)
         self.assertEqual(result["sources"][0]["doc_id"], "trivia-0001")
+
+    async def test_clarify_uses_the_decision_text(self):
+        from app.decisions import Decision
+        decision = Decision("clarify", None, "guard", 0.9, "ปีกำกวม",
+                            clarify_text="ถามกลับไทย", clarify_text_en="Ask back")
+        with patch("app.router.decide", return_value=decision):
+            thai = await self.run_query("แชมป์ปี 2025 คือทีมไหน")
+            english = await self.router.route({**self.request, "query": "Who won in 2025?",
+                                               "user": {**self.request["user"], "language": "en"}})
+        self.assertEqual((thai["route"], thai["answer"]), ("clarify", "ถามกลับไทย"))
+        self.assertEqual(english["answer"], "Ask back")
+        self.assertEqual(self.clients.calls, [])
+
+    async def test_a_reply_after_a_clarify_is_routed_without_condense(self):
+        from app.decisions import title_year_clarify
+        history = [{"role": "user", "content": "แชมป์ปี 2025 คือทีมไหน"},
+                   {"role": "assistant", "content": title_year_clarify(2025, False)[0]}]
+        self.clients.chunks = [{"text": "Liverpool FC champions",
+                                "source": {"doc_id": "hist-season-2024", "title": "t",
+                                           "category": "historical", "origin": "fjelstul"}}]
+        result = await self.router.route({**self.request, "query": "2024/25", "history": history})
+        self.assertEqual(result["trace"]["standalone_query"], "แชมป์ปี 2025 คือทีมไหน 2024/25 พรีเมียร์ลีก")
+        self.assertIsNone(result["trace"].get("condense"))
+        search = next(call for call in self.clients.calls if call[0] == "search")[1]
+        self.assertEqual(search["filters"], {"category": ["historical"], "season": "2024"})
+        generate = next(call for call in self.clients.calls if call[0] == "generate")[1]
+        self.assertEqual(generate["history"], history)
+        self.assertFalse(any(call[0] == "condense" for call in self.clients.calls))
+
+    def context_docs(self):
+        generate = next(call for call in self.clients.calls if call[0] == "generate")[1]
+        return [context["source"]["doc_id"] for context in generate["contexts"]]
+
+    async def test_club_record_questions_search_each_club(self):
+        self.clients.chunks = [archive_chunk("hist-h2h-arsenal-chelsea"), archive_chunk("hist-club-chelsea"),
+                               *(archive_chunk(f"hist-team-{index}") for index in range(4))]
+        self.clients.record_chunks = {61: [archive_chunk("hist-club-chelsea"), archive_chunk("hist-club-chelsea", 1)],
+                                      57: [archive_chunk("hist-club-arsenal"), archive_chunk("hist-club-arsenal", 1)]}
+        result = await self.run_query("เชลซีกับอาร์เซนอลใครได้แชมป์พรีเมียร์ลีกเยอะกว่า")
+        record = [call[1] for call in self.clients.calls
+                  if call[0] == "search" and "topic" in call[1]["filters"]]
+        self.assertEqual([payload["filters"] for payload in record], [
+            {"category": ["historical"], "team_ids": [61], "topic": ["club_record"]},
+            {"category": ["historical"], "team_ids": [57], "topic": ["club_record"]}])
+        self.assertEqual({payload["top_k"] for payload in record}, {2})
+        # The summary line's own words keep chunk 0 first (Thai "ตกชั้น" alone ranked season tables over it).
+        self.assertTrue(record[0]["query"].startswith(
+            "Chelsea FC Premier League record titles runners-up relegations best finish worst finish total points "
+            "seasons เชลซี"), record[0]["query"])
+        self.assertEqual(self.context_docs(), ["hist-club-chelsea", "hist-club-chelsea", "hist-club-arsenal",
+                                               "hist-club-arsenal", "hist-h2h-arsenal-chelsea", "hist-team-0"])
+        self.assertEqual(result["trace"]["record_search"], [61, 57])
+
+    async def test_a_failed_club_record_search_keeps_the_ordinary_search(self):
+        self.clients.chunks = [archive_chunk("hist-records")]
+        self.clients.fail_record = True
+        result = await self.run_query("เชลซีกับอาร์เซนอลใครได้แชมป์พรีเมียร์ลีกเยอะกว่า")
+        self.assertEqual(result["trace"]["record_search"], "unavailable")
+        self.assertEqual(self.context_docs(), ["hist-records"])
+
+    async def test_club_record_chunks_answer_when_the_ordinary_search_fails(self):
+        self.clients.fail_search = True
+        self.clients.record_chunks = {61: [archive_chunk("hist-club-chelsea")], 57: [archive_chunk("hist-club-arsenal")]}
+        await self.run_query("เชลซีกับอาร์เซนอลใครได้แชมป์พรีเมียร์ลีกเยอะกว่า")
+        self.assertEqual(self.context_docs(), ["hist-club-chelsea", "hist-club-arsenal"])
+
+    # Live chat test 2026-10-05: the rules leave this one to the classifier, which never marked the clubs.
+    async def test_classified_club_record_questions_search_each_club(self):
+        self.clients.classifier = {"data": {"label": "trivia_history", "score": 0.95}}
+        self.clients.chunks = [archive_chunk("hist-records")]
+        self.clients.record_chunks = {63: [archive_chunk("hist-club-fulham")],
+                                      71: [archive_chunk("hist-club-sunderland")]}
+        result = await self.run_query("ฟูแล่มกับซันเดอร์แลนด์ใครตกชั้นจากพรีเมียร์ลีกบ่อยกว่า")
+        self.assertEqual(result["trace"]["record_search"], [63, 71])
+        self.assertEqual(self.context_docs(), ["hist-club-fulham", "hist-club-sunderland", "hist-records"])
+
+    # Final review 2026-10-05: an error before the record search is awaited must not leave it running.
+    async def test_an_unexpected_error_cancels_the_club_record_search(self):
+        finished = []
+        ordinary = self.clients.search
+
+        async def search(payload, request_id):
+            if "topic" in payload["filters"]:
+                await asyncio.sleep(0.2)
+                finished.append(payload["filters"]["team_ids"][0])
+                return {"chunks": []}
+            raise RuntimeError("bug in the ordinary search")
+
+        self.clients.search = search
+        with self.assertRaises(RuntimeError):
+            await self.run_query("เชลซีกับอาร์เซนอลใครได้แชมป์พรีเมียร์ลีกเยอะกว่า")
+        await asyncio.sleep(0.4)
+        self.assertEqual(finished, [])
+        self.clients.search = ordinary
+
+    # Review minors 2026-10-05: an answer from the club summaries alone still came from retrieval.
+    async def test_record_search_counts_as_retrieval_in_the_trace(self):
+        self.clients.fail_search = True
+        self.clients.record_chunks = {61: [archive_chunk("hist-club-chelsea")], 57: [archive_chunk("hist-club-arsenal")]}
+        result = await self.run_query("เชลซีกับอาร์เซนอลใครได้แชมป์พรีเมียร์ลีกเยอะกว่า")
+        self.assertIn("retrieval", result["engines_used"])
+        self.assertIn("retrieval.record_search", [step["name"] for step in result["trace"]["steps"]])
+
+    async def test_other_questions_search_once(self):
+        self.clients.chunks = [archive_chunk("hist-h2h-arsenal-chelsea")]
+        result = await self.run_query("อาร์เซนอลเคยชนะเชลซีกี่ครั้ง")
+        self.assertEqual(len([call for call in self.clients.calls if call[0] == "search"]), 1)
+        self.assertNotIn("record_search", result["trace"])
 
     async def test_ambiguous_team_does_not_call_upstream(self):
         result = await self.run_query("ยูไนเต็ดนัดล่าสุดชนะไหม")

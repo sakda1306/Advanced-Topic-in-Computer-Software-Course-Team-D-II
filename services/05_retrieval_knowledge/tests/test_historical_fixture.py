@@ -1,4 +1,4 @@
-"""eval/fixtures/historical_docs.json.gz: 07's archive, valid for /index/upsert (CONTRACT v1.11)."""
+"""eval/fixtures/historical_docs.json.gz: 07's archive, valid for /index/upsert (CONTRACT v1.13)."""
 
 from __future__ import annotations
 
@@ -24,5 +24,8 @@ def test_archive_covers_every_past_season() -> None:
     assert topics["season_table"] == 34
     assert topics["team_season"] == 686
     assert topics["head_to_head"] > 900
+    assert topics["club_record"] == 51
+    assert topics["league_records"] == 1
+    assert all(d.season is None for d in documents if d.topic in ("club_record", "league_records"))
     seasons = {d.season for d in documents if d.topic == "season_table"}
     assert seasons == {str(year) for year in range(1992, 2026)}

@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-10-02T01:21:20.621+07:00",
+  "generated_at": "2026-10-05T01:21:24.648+07:00",
   "embedding_model": "paraphrase-multilingual-MiniLM-L12-v2",
   "golden_file": "eval/golden_thai.jsonl",
   "questions": {
-    "historical_th": 20,
+    "historical_th": 32,
     "match_th": 20,
     "multi_doc": 10,
     "out_of_kb_th": 20,
@@ -16,11 +16,11 @@
     "cpu_count": 8,
     "python": "3.12.10",
     "versions": {
-      "torch": "2.13.0",
-      "sentence-transformers": "5.6.0",
-      "faiss-cpu": "1.14.3",
+      "torch": "2.14.0+cpu",
+      "sentence-transformers": "6.1.0",
+      "faiss-cpu": "1.15.1",
       "rank-bm25": "0.2.2",
-      "numpy": "2.4.6"
+      "numpy": "2.5.3"
     },
     "conditions": "one process, CPU only, models loaded and warmed up before timing; latency is Searcher.search in process: no HTTP, no model loading, no other load on the machine"
   },
@@ -29,10 +29,10 @@
       "kind": "historical_th",
       "variant": "raw",
       "mode": "bm25",
-      "n": 20,
-      "hit@1": 0.5,
-      "hit@5": 0.6,
-      "mrr": 0.557177033492823,
+      "n": 32,
+      "hit@1": 0.4375,
+      "hit@5": 0.6875,
+      "mrr": 0.5572916666666666,
       "router_miss": 0,
       "rules_undecided": 0
     },
@@ -40,10 +40,10 @@
       "kind": "historical_th",
       "variant": "raw",
       "mode": "hybrid",
-      "n": 20,
-      "hit@1": 0.2,
-      "hit@5": 0.6,
-      "mrr": 0.40644841269841264,
+      "n": 32,
+      "hit@1": 0.15625,
+      "hit@5": 0.625,
+      "mrr": 0.37653882575757575,
       "router_miss": 0,
       "rules_undecided": 0
     },
@@ -51,10 +51,10 @@
       "kind": "historical_th",
       "variant": "raw",
       "mode": "vector",
-      "n": 20,
-      "hit@1": 0.05,
-      "hit@5": 0.3,
-      "mrr": 0.12333333333333334,
+      "n": 32,
+      "hit@1": 0.03125,
+      "hit@5": 0.15625,
+      "mrr": 0.09623927696078431,
       "router_miss": 0,
       "rules_undecided": 0
     },
@@ -62,34 +62,34 @@
       "kind": "historical_th",
       "variant": "routed",
       "mode": "bm25",
-      "n": 20,
-      "hit@1": 0.85,
-      "hit@5": 0.95,
-      "mrr": 0.8808333333333334,
+      "n": 32,
+      "hit@1": 0.78125,
+      "hit@5": 0.90625,
+      "mrr": 0.8461538461538461,
       "router_miss": 0,
-      "rules_undecided": 0
+      "rules_undecided": 1
     },
     {
       "kind": "historical_th",
       "variant": "routed",
       "mode": "hybrid",
-      "n": 20,
-      "hit@1": 0.9,
-      "hit@5": 0.95,
-      "mrr": 0.9175000000000001,
+      "n": 32,
+      "hit@1": 0.78125,
+      "hit@5": 0.96875,
+      "mrr": 0.8669871794871795,
       "router_miss": 0,
-      "rules_undecided": 0
+      "rules_undecided": 1
     },
     {
       "kind": "historical_th",
       "variant": "routed",
       "mode": "vector",
-      "n": 20,
-      "hit@1": 0.9,
-      "hit@5": 0.95,
-      "mrr": 0.925,
+      "n": 32,
+      "hit@1": 0.5625,
+      "hit@5": 0.8125,
+      "mrr": 0.6698288690476191,
       "router_miss": 0,
-      "rules_undecided": 0
+      "rules_undecided": 1
     },
     {
       "kind": "match_th",
@@ -98,7 +98,7 @@
       "n": 20,
       "hit@1": 0.4,
       "hit@5": 0.5,
-      "mrr": 0.4416666666666667,
+      "mrr": 0.4375,
       "router_miss": 0,
       "rules_undecided": 0
     },
@@ -109,7 +109,7 @@
       "n": 20,
       "hit@1": 0.0,
       "hit@5": 0.4,
-      "mrr": 0.22083333333333335,
+      "mrr": 0.21958333333333332,
       "router_miss": 0,
       "rules_undecided": 0
     },
@@ -208,7 +208,7 @@
       "n": 10,
       "hit@1": 0.0,
       "hit@5": 0.4,
-      "mrr": 0.1638888888888889,
+      "mrr": 0.15833333333333333,
       "router_miss": 1,
       "rules_undecided": 3
     },
@@ -228,9 +228,9 @@
       "variant": "raw",
       "mode": "bm25",
       "n": 39,
-      "hit@1": 0.1282051282051282,
-      "hit@5": 0.23076923076923078,
-      "mrr": 0.1673570019723866,
+      "hit@1": 0.07692307692307693,
+      "hit@5": 0.20512820512820512,
+      "mrr": 0.13103221564760026,
       "router_miss": 0,
       "rules_undecided": 0
     },
@@ -241,7 +241,7 @@
       "n": 39,
       "hit@1": 0.38461538461538464,
       "hit@5": 0.7692307692307693,
-      "mrr": 0.5417378917378917,
+      "mrr": 0.5298519144672991,
       "router_miss": 0,
       "rules_undecided": 0
     },
@@ -263,7 +263,7 @@
       "n": 39,
       "hit@1": 0.15384615384615385,
       "hit@5": 0.3333333333333333,
-      "mrr": 0.22592592592592595,
+      "mrr": 0.21737891737891737,
       "router_miss": 0,
       "rules_undecided": 13
     },
@@ -272,9 +272,9 @@
       "variant": "routed",
       "mode": "hybrid",
       "n": 39,
-      "hit@1": 0.3333333333333333,
-      "hit@5": 0.7435897435897436,
-      "mrr": 0.506908831908832,
+      "hit@1": 0.358974358974359,
+      "hit@5": 0.717948717948718,
+      "mrr": 0.5033968880122727,
       "router_miss": 0,
       "rules_undecided": 13
     },
@@ -296,7 +296,7 @@
       "variant": "raw",
       "mode": "bm25",
       "n": 6,
-      "returned_chunks": 0.16666666666666666
+      "returned_chunks": 0.3333333333333333
     },
     {
       "group": "football",
@@ -317,7 +317,7 @@
       "variant": "routed",
       "mode": "bm25",
       "n": 6,
-      "returned_chunks": 0.16666666666666666
+      "returned_chunks": 0.3333333333333333
     },
     {
       "group": "football",
@@ -336,51 +336,51 @@
     {
       "group": "meta",
       "variant": "raw",
+      "mode": "bm25",
+      "n": 5,
+      "returned_chunks": 0.4
+    },
+    {
+      "group": "meta",
+      "variant": "raw",
+      "mode": "hybrid",
+      "n": 5,
+      "returned_chunks": 1.0
+    },
+    {
+      "group": "meta",
+      "variant": "raw",
+      "mode": "vector",
+      "n": 5,
+      "returned_chunks": 1.0
+    },
+    {
+      "group": "meta",
+      "variant": "routed",
       "mode": "bm25",
       "n": 5,
       "returned_chunks": 0.0
     },
     {
       "group": "meta",
-      "variant": "raw",
-      "mode": "hybrid",
-      "n": 5,
-      "returned_chunks": 1.0
-    },
-    {
-      "group": "meta",
-      "variant": "raw",
-      "mode": "vector",
-      "n": 5,
-      "returned_chunks": 1.0
-    },
-    {
-      "group": "meta",
-      "variant": "routed",
-      "mode": "bm25",
-      "n": 5,
-      "returned_chunks": 0.0
-    },
-    {
-      "group": "meta",
       "variant": "routed",
       "mode": "hybrid",
       "n": 5,
-      "returned_chunks": 1.0
+      "returned_chunks": 0.2
     },
     {
       "group": "meta",
       "variant": "routed",
       "mode": "vector",
       "n": 5,
-      "returned_chunks": 1.0
+      "returned_chunks": 0.2
     },
     {
       "group": "other",
       "variant": "raw",
       "mode": "bm25",
       "n": 4,
-      "returned_chunks": 0.0
+      "returned_chunks": 0.25
     },
     {
       "group": "other",
@@ -401,7 +401,7 @@
       "variant": "routed",
       "mode": "bm25",
       "n": 4,
-      "returned_chunks": 0.0
+      "returned_chunks": 0.25
     },
     {
       "group": "other",
@@ -422,7 +422,7 @@
       "variant": "raw",
       "mode": "bm25",
       "n": 5,
-      "returned_chunks": 0.0
+      "returned_chunks": 0.2
     },
     {
       "group": "vague",
@@ -443,7 +443,7 @@
       "variant": "routed",
       "mode": "bm25",
       "n": 5,
-      "returned_chunks": 0.0
+      "returned_chunks": 0.2
     },
     {
       "group": "vague",
@@ -466,7 +466,7 @@
       "rewrite": 1,
       "router_filter": 3,
       "router_route": 1,
-      "vocabulary": 4
+      "vocabulary": 5
     },
     "undecided": {
       "multi_doc_partial": 1,
@@ -494,10 +494,10 @@
       ],
       "top5": [
         "trivia-0386",
-        "hist-team-2002-arsenal",
+        "hist-records",
         "trivia-1212",
-        "hist-team-2002-chelsea",
-        "trivia-1452"
+        "trivia-1452",
+        "hist-team-2002-arsenal"
       ]
     },
     {
@@ -561,10 +561,10 @@
       ],
       "top5": [
         "trivia-0574",
+        "hist-records",
         "trivia-1885",
         "trivia-1818",
-        "trivia-0732",
-        "trivia-0731"
+        "trivia-0732"
       ]
     },
     {
@@ -587,8 +587,8 @@
       ],
       "top5": [
         "trivia-0573",
-        "trivia-0591",
         "trivia-1832",
+        "trivia-0591",
         "trivia-0655",
         "trivia-0062"
       ]
@@ -608,10 +608,10 @@
       ],
       "top5": [
         "trivia-1385",
+        "hist-records",
         "trivia-1390",
         "trivia-0329",
-        "trivia-1380",
-        "trivia-0559"
+        "trivia-1380"
       ]
     },
     {
@@ -633,11 +633,11 @@
         "trivia-1775"
       ],
       "top5": [
+        "hist-club-liverpool",
+        "hist-records",
         "trivia-0034",
-        "hist-team-1996-liverpool",
         "trivia-0294",
-        "trivia-0989",
-        "trivia-0497"
+        "hist-team-1996-liverpool"
       ]
     },
     {
@@ -658,9 +658,9 @@
         "trivia-0075"
       ],
       "top5": [
-        "trivia-0566",
         "trivia-0618",
-        "trivia-0758",
+        "hist-records",
+        "trivia-0566",
         "trivia-1397",
         "trivia-0668"
       ]
@@ -698,10 +698,35 @@
       ],
       "top5": [
         "trivia-1903",
+        "hist-records",
         "trivia-0970",
         "trivia-1654",
-        "trivia-0318",
-        "trivia-0947"
+        "trivia-0318"
+      ]
+    },
+    {
+      "id": "th-trivia-010",
+      "kind": "trivia_th",
+      "label": "vocabulary",
+      "undecided": false,
+      "query_th": "ทีมแรกที่ได้แชมป์พรีเมียร์ลีกโดยไม่ได้มาจากแมนเชสเตอร์หรือลอนดอนคือทีมไหน",
+      "routed_query": "ทีมแรกที่ได้แชมป์พรีเมียร์ลีกโดยไม่ได้มาจากแมนเชสเตอร์หรือลอนดอนคือทีมไหน",
+      "filters": {
+        "category": [
+          "trivia",
+          "historical"
+        ]
+      },
+      "routed_away": null,
+      "expected": [
+        "trivia-0586"
+      ],
+      "top5": [
+        "trivia-0241",
+        "hist-records",
+        "trivia-1885",
+        "trivia-0589",
+        "trivia-0994"
       ]
     },
     {
@@ -763,10 +788,10 @@
       ],
       "top5": [
         "trivia-1366",
+        "hist-records",
         "trivia-1383",
         "trivia-1518",
-        "trivia-0027",
-        "trivia-1381"
+        "trivia-0027"
       ]
     },
     {
@@ -783,9 +808,9 @@
       ],
       "top5": [
         "trivia-0170",
-        "match-2026-mw04-64-66",
+        "hist-records",
         "trivia-0179",
-        "match-2026-mw05-73-64",
+        "match-2026-mw04-64-66",
         "trivia-0172"
       ]
     },
@@ -803,9 +828,9 @@
       ],
       "top5": [
         "trivia-0027",
-        "match-2026-mw04-64-66",
+        "hist-records",
         "trivia-0049",
-        "match-2026-mw05-73-64",
+        "match-2026-mw04-64-66",
         "trivia-1381"
       ]
     },
@@ -850,10 +875,10 @@
       ],
       "top5": [
         "trivia-0736",
+        "hist-records",
         "trivia-0390",
         "trivia-0389",
-        "trivia-0386",
-        "trivia-0733"
+        "trivia-0386"
       ]
     }
   ]

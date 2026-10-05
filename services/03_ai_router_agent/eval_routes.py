@@ -47,8 +47,8 @@ class EvalClients:
 
 async def evaluate():
     cases = [json.loads(line) for line in (ROOT / "tests" / "routing_cases.jsonl").read_text(encoding="utf-8").splitlines()]
-    if len(cases) != 44:
-        raise ValueError("Expected 44 routing cases")
+    if len(cases) != 58:
+        raise ValueError("Expected 58 routing cases")
     teams = TeamDirectory.from_file(ROOT / "data" / "team_aliases.json")
     router = Router(EvalClients(), teams)
     failures = []

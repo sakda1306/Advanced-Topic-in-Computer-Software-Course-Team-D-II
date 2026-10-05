@@ -33,6 +33,7 @@ class SearchFilters:
     team_ids: tuple[int, ...] | None = None
     date_from: str | None = None
     date_to: str | None = None
+    topic: tuple[str, ...] | None = None  # CONTRACT v1.15: the document's topic must be listed
 
     def is_empty(self) -> bool:
         return all(
@@ -44,6 +45,7 @@ class SearchFilters:
                 self.team_ids,
                 self.date_from,
                 self.date_to,
+                self.topic,
             )
         )
 
@@ -55,6 +57,8 @@ class SearchFilters:
         if self.matchweek is not None and document.matchweek != self.matchweek:
             return False
         if self.team_ids is not None and not set(self.team_ids) & set(document.team_ids):
+            return False
+        if self.topic is not None and document.topic not in self.topic:
             return False
         if self.date_from is not None or self.date_to is not None:
             # A date filter asks about a period; documents without a date are not in it.

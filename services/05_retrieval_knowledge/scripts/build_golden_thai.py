@@ -160,6 +160,40 @@ HISTORICAL_TH = (
         ("hist-h2h-newcastle-sunderland",),
         "head_to_head",
     ),
+    # v1.13: questions that need a count across seasons (club and league records).
+    (
+        "แมนยูได้แชมป์พรีเมียร์ลีกกี่สมัย",
+        ("hist-club-manchester-united", "hist-records"),
+        "club_record",
+    ),
+    (
+        "สเปอร์สเคยได้แชมป์พรีเมียร์ลีกไหม",
+        ("hist-club-tottenham", "hist-records"),
+        "club_record",
+    ),
+    ("ทีมไหนได้แชมป์พรีเมียร์ลีกมากที่สุด", ("hist-records",), "league_records"),
+    ("มีกี่ทีมที่เคยได้แชมป์พรีเมียร์ลีก", ("hist-records",), "league_records"),
+    ("ทีมไหนอยู่พรีเมียร์ลีกครบทุกฤดูกาล", ("hist-records",), "league_records"),
+    ("นิวคาสเซิลเคยตกชั้นจากพรีเมียร์ลีกกี่ครั้ง", ("hist-club-newcastle",), "club_record"),
+    (
+        "ลิเวอร์พูลเคยจบอันดับแย่ที่สุดในพรีเมียร์ลีกอันดับเท่าไหร่",
+        ("hist-club-liverpool",),
+        "club_record",
+    ),
+    ("ทีมไหนเก็บแต้มรวมในพรีเมียร์ลีกมากที่สุดตลอดกาล", ("hist-records",), "league_records"),
+    # v1.14: English top-flight titles in all eras (First Division before 1992).
+    (
+        "ลิเวอร์พูลได้แชมป์ลีกสูงสุดของอังกฤษทั้งหมดกี่สมัยรวมยุคก่อนพรีเมียร์ลีก",
+        ("hist-club-liverpool", "hist-records"),
+        "club_record",
+    ),
+    ("ใครเป็นแชมป์ดิวิชั่น 1 อังกฤษฤดูกาล 1989/90", ("hist-records",), "league_records"),
+    ("ทีมไหนได้แชมป์ลีกสูงสุดอังกฤษมากที่สุดทุกยุค", ("hist-records",), "league_records"),
+    (
+        "เชลซีเคยได้แชมป์ลีกสูงสุดก่อนยุคพรีเมียร์ลีกไหม",
+        ("hist-club-chelsea", "hist-records"),
+        "club_record",
+    ),
 )
 ROUTER_SNIPPET = """
 import json, sys
