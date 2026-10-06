@@ -16,6 +16,7 @@ log = get_logger(__name__)
 STATUS_CACHE_KEY = "cache:football:status"
 # After 07 fails, chats skip the status call for this long instead of waiting on it each time.
 STATUS_RETRY_SECONDS = 30.0
+PREDICTION_CACHE_SECONDS = 300
 
 
 class FootballDataClient:
@@ -62,6 +63,31 @@ class FootballDataClient:
 
     async def match(self, match_id: str) -> Any:
         return await self._client.get(f"/football/matches/{match_id}")
+
+    async def _cached(self, key: str, path: str, **params: Any) -> Any:
+        cached = await self._store.get_json(key)
+        if cached is not None:
+            return cached
+        data = await self._client.get(path, **params)
+        # A stale snapshot means 07 could not reach 04; ask again next time so recovery shows.
+        if not (isinstance(data, dict) and data.get("stale") is True):
+            await self._store.set_json(key, data, PREDICTION_CACHE_SECONDS)
+        return data
+
+    async def prediction(self, home_team_id: int, away_team_id: int) -> Any:
+        return await self._cached(
+            f"cache:football:predict:{home_team_id}:{away_team_id}",
+            "/football/predict",
+            home_team_id=home_team_id,
+            away_team_id=away_team_id,
+        )
+
+    async def simulation(self, season: str | None) -> Any:
+        return await self._cached(
+            f"cache:football:simulation:{season or 'current'}",
+            "/football/simulation",
+            season=season,
+        )
 
     async def published_report(self, season: str | None, matchweek: int | None) -> Any:
         return await self._client.get(

@@ -102,6 +102,23 @@ def to_document(entry: TriviaEntry) -> Document:
     )
 
 
-def load_trivia_documents(path: str | Path) -> tuple[list[Document], DedupeReport]:
-    report = dedupe(parse_trivia(Path(path).read_text(encoding="utf-8")))
+def load_trivia_documents(
+    path: str | Path, *, first_number: int = 1
+) -> tuple[list[Document], DedupeReport]:
+    entries = parse_trivia(Path(path).read_text(encoding="utf-8"))
+    if first_number != 1:
+        entries = [
+            TriviaEntry(e.number + first_number - 1, e.topic, e.question, e.answer) for e in entries
+        ]
+    report = dedupe(entries)
     return [to_document(e) for e in report.kept], report
+
+
+# The Thai nickname entries (thai_nicknames_qa.txt) are numbered after the trivia file
+# (trivia-0001..1996) so their ids keep the trivia-NNNN form of CONTRACT §doc_id. They live
+# in their own file so the trivia golden set, sampled from football_trivia_qa.txt, stays as is.
+NICKNAME_FIRST_NUMBER = 2001
+
+
+def load_nickname_documents(path: str | Path) -> tuple[list[Document], DedupeReport]:
+    return load_trivia_documents(path, first_number=NICKNAME_FIRST_NUMBER)

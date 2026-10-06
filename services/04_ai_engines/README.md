@@ -42,7 +42,7 @@ curl -X POST http://localhost:8004/local/classify \
 curl -X POST http://localhost:8004/local/predict \
   -H "Content-Type: application/json" \
   -d '{"request_id":"t3","home_team_id":57,"away_team_id":61,"season":"2026"}'
-# -> 501 NOT_IMPLEMENTED (ดูเหตุผลในหัวข้อ D5 ด้านล่าง)
+# -> 501 NOT_IMPLEMENTED เมื่อไม่ส่ง home_strength / away_strength (ปกติ 07 เป็นคนเรียก ดูหัวข้อ D5)
 ```
 
 ## เทส
@@ -112,75 +112,14 @@ pytest tests/ -v   # ครอบ /general, llm_client (fallback + เพดา�
 ต้องรัน `pip install -r requirements-eval.txt && python eval/compare_methods.py` ในเครื่อง/CI ที่ต่อเน็ต
 ได้จริง + ใส่ `GROQ_API_KEY`/`GEMINI_API_KEY` ก่อน ตารางจะเติมตัวเลขจริงให้อัตโนมัติ
 
-**`/local/predict` (Could) — ตอบ 501 ตามที่ contract อนุญาต** เหตุผล (ไม่ใช่แค่ "ยังไม่ได้เขียนโค้ด"):
+### ทำนายผล (CONTRACT v1.7)
 
-1. service `07_football_data` ยังไม่ถูกสร้าง (ทุก service ใน `SCHEDULE.md` ยังเป็น placeholder)
-   จึงไม่มี "ผลที่ 07 เก็บไว้" ให้ดึงจริงตามที่งานนี้ต้องการ
-2. `CONTRACT.md` §7 (api → football-data) **ไม่ได้ให้สิทธิ์ `engines` เรียก football-data โดยตรง**
-   — คนเรียกที่ระบุไว้มีแค่ `api` และ `router` (เฉพาะ `/football/teams`) การจะให้ `/local/predict` ดึงผล
-   ย้อนหลังมาคำนวณเองต้อง **เพิ่ม § ใหม่ใน CONTRACT.md ก่อน** (ต้อง approve จาก sakda1306 + เจ้าของ 07
-   ตามกฎเหล็กบรรทัดแรกของไฟล์) — เป็นการตัดสินใจสถาปัตยกรรมที่ควรคุยในทีมก่อน ไม่ใช่แค่โค้ด
-
-สิ่งที่ทำแล้วจริง: **คณิตศาสตร์ Poisson model ล้วน ๆ** ใน `app/poisson.py`
-(`TeamStrength` → `expected_goals` → `match_outcome_probabilities`) พร้อม unit test 4 ตัวใน
-`tests/test_poisson.py` (ผลรวมความน่าจะเป็น = 1, ทีมแข็งกว่าได้เปรียบ, ทีมพอกันแบ่งใกล้เคียงกัน)
-— พร้อมต่อกับข้อมูลจริงทันทีที่ (1) มี 07 และ (2) มีการเพิ่ม CONTRACT.md ให้ engines อ่านผลย้อนหลังได้
-
-**ข้อเสนอสำหรับทีม (ยกไปคุยตอนเปิด PR)**: เพิ่ม §3.1 ใน CONTRACT.md ให้ `router` เป็นคนดึง
-"ผลย้อนหลัง N นัดล่าสุดของ 2 ทีม" จาก 07 มาก่อน แล้วส่งมาเป็นส่วนหนึ่งของ `PredictRequest` แทนที่จะให้
-`engines` เรียก 07 เอง — ตรงกับ "หลักคิดที่ 3" ใน `00_PLAN_OVERVIEW.md` ที่ว่า router เป็นจุดตัดสินใจ
-จุดเดียว และไม่เพิ่มเส้นเรียกข้ามระหว่าง service ที่ไม่มีในผัง
-
-## หมายเหตุการออกแบบ D2 (อ้างอิง)
-
-- ใช้ไลบรารี `openai` ตัวเดียวทั้งสอง provider ตาม CONTRACT.md §8 — สลับด้วย `base_url` เท่านั้น
-- ลำดับ fallback: **Groq → (timeout/429/connection/status error) → Gemini ครั้งเดียว → ทั้งคู่ล่ม =
-  `LLM_UNAVAILABLE` (503)**
-- `X-Request-ID`: middleware สร้างให้ถ้าไม่มีมา, ใส่กลับใน response header, log ทุก event เป็น JSON
-  บรรทัดเดียว ตาม CONTRACT.md §0
-- error ทุกกรณีตอบ Problem-JSON (`application/problem+json`)
-- **เพดานเวลาจริงต่อ hop:** `httpx.Timeout` จำกัดเวลาแยกรายช่วง (connect/read/write/pool) และ read timeout
-  นับต่อการรอ chunk จึงไม่ใช่เพดานรวมของคำขอ — `_call_with_hard_timeout()` ใน `llm_client.py` รัน call ใน
-  daemon thread แล้วรอด้วย `Event.wait(min(timeout ของ provider, เวลาที่เหลือ))` ถ้าเกินจะปิด client และโยน
-  timeout เข้าเส้นทาง fallback เดิม งบรวมจึงไม่เกิน `ROUTER_TIMEOUT_SECONDS − TIMEOUT_SAFETY_MARGIN_SECONDS`
-  (ข้อแลกเปลี่ยน: thread ที่ถูกตัดอาจค้างจนกว่า client จะปิด แต่ผลถูกทิ้ง)
-
-## โครงสร้างไฟล์
-
-```
-services/04_ai_engines/
-├── app/
-│   ├── main.py              # FastAPI: /health, /general, /local/classify, /local/predict
-│   ├── config.py            # env vars (Groq/Gemini, timeout, token budget)
-│   ├── schemas.py           # pydantic models ตรงกับ CONTRACT.md
-│   ├── llm_client.py        # Groq → Gemini fallback
-│   ├── local_classifier.py  # โหลด/ใช้โมเดล TF-IDF+LogReg
-│   ├── token_budget.py      # D4: ประมาณ/ตัด token ของ history
-│   ├── poisson.py           # D5: คณิตศาสตร์ Poisson model (pure function)
-│   └── models/intent_clf.joblib   # โมเดลที่เทรนแล้ว (จาก train.py)
-├── data/intents.csv         # D1 + D4 (254 แถว)
-├── eval/
-│   ├── compare_methods.py   # D5: รันเทียบ 3 วิธี เขียน method_comparison.md
-│   ├── embedding_classifier.py
-│   ├── llm_classifier.py
-│   └── method_comparison.md
-├── tests/
-│   ├── test_general.py / test_llm_client.py       # D2 (+ เพดานเวลา wall-clock ระหว่าง call)
-│   ├── test_llm_fallback_timeout.py               # งบเวลารวมของ fallback
-│   ├── test_local_engines.py / test_poisson.py    # D3/D5
-│   ├── test_token_budget.py                       # D4
-│   ├── test_train_eval.py                         # train.py: fixture `intent`/`expected_intent` + เคส clarify
-│   └── simulated_routing_cases.jsonl               # ใช้แทน routing_cases.jsonl ของจริงชั่วคราว
-├── train.py                 # D3: เทรน + ประเมินผล
-├── d4_augment_dataset.py    # D4: เพิ่มตัวอย่างจาก error ที่วิเคราะห์ได้
-├── requirements.txt
-├── requirements-eval.txt    # เฉพาะรัน eval/compare_methods.py วิธี embeddings
-└── .env.example
-```
+- `POST /local/predict` — ถ้า 07 ส่ง `home_strength` / `away_strength` มา จะคำนวณด้วย Poisson (`app/poisson.py`) และคืน `home_win`, `draw`, `away_win`, `home_xg`, `away_xg`, `most_likely_score` · ไม่ส่งมา → 501 เหมือนเดิม
+- `POST /local/simulate` — จำลองฤดูกาลที่เหลือแบบ Monte Carlo (`app/simulate.py`, numpy) คืนโอกาสแชมป์ / ท็อป 4 / ตกชั้น และ `position_probs` ของทุกทีม · 10,000 ครั้งกับ 380 นัดใช้เวลาไม่ถึง 2 วินาที
+- 04 ไม่มี state และไม่เรียก service อื่น · 07 เป็นคนเตรียมข้อมูลทีมและเก็บผลจำลอง
 
 ## ยังไม่ได้ทำ (ตั้งใจเว้นไว้)
 
 - `Dockerfile` — เจ้าของคือ member6 ตาม `GIT_FLOW.md` (ไม่แก้ในโฟลเดอร์นี้)
 - ตัวเลขจริงของวิธี embeddings/LLM ใน D5 — ต้องรันในเครื่องที่ต่อเน็ตได้ (ดูหัวข้อ D5)
-- `/local/predict` แบบใช้ข้อมูลจริง — ต้องรอ 07 + แก้ CONTRACT.md (ดูหัวข้อ D5)
 - D6: accuracy สรุปสุดท้ายลง README — รอผลจาก `routing_cases.jsonl` ของจริง

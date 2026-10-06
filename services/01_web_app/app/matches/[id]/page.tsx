@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRemote } from "../../../lib/use-remote";
 import { dateTime, Match } from "../../../lib/types";
 import { ErrorBox, Empty, Loading, PageTitle } from "../../../components/Ui";
+import { TeamName } from "../../../components/FootballIdentity";
 function StructuredData({ value }: { value: unknown }) {
   if (value == null || (Array.isArray(value) && !value.length))
     return <Empty>ยังไม่มีข้อมูลส่วนนี้</Empty>;
@@ -55,9 +56,13 @@ export default function MatchPage({ params }: { params: { id: string } }) {
               <p>
                 {dateTime(match.kickoff)} · นัดที่ {match.matchweek}
               </p>
-              <strong>
-                {match.score.home ?? "—"} : {match.score.away ?? "—"}
-              </strong>
+              <div className="latest-result">
+                <TeamName id={match.home.team_id} name={match.home.name} />
+                <strong>
+                  {match.score.home ?? "—"} : {match.score.away ?? "—"}
+                </strong>
+                <TeamName id={match.away.team_id} name={match.away.name} />
+              </div>
               <small>ข้อมูล ณ {dateTime(match.fetched_at)}</small>
             </section>
             <section className="panel">

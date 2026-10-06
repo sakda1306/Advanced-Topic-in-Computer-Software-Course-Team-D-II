@@ -45,3 +45,7 @@ desktop.ini
 # logs
 *.log
 logs/
+.venv/
+__pycache__/
+*.pyc
+eval/golden_thai.draft.jsonl

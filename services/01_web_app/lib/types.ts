@@ -19,6 +19,8 @@ export type Trace = {
   decided_at_layer?: string | null;
   intent?: string | null;
   rewritten_query?: string | null;
+  standalone_query?: string | null;
+  condense?: "applied" | "unchanged" | "rejected" | "unavailable" | null;
   filters?: Record<string, unknown> | null;
   fallback?: string | null;
   steps?: { name: string; ms: number }[];
@@ -28,13 +30,15 @@ export type Route =
   | "general_ai"
   | "local_ai"
   | "clarify"
-  | "decline";
+  | "decline"
+  | "chat";
 export const routeLabels: Record<Route, string> = {
   football_rag: "ตอบจากคลังข้อมูลฟุตบอล",
   general_ai: "ความรู้ทั่วไป",
   local_ai: "โมเดลทำนาย",
   clarify: "ขอข้อมูลเพิ่ม",
   decline: "นอกขอบเขต",
+  chat: "คุยกับผู้ช่วย",
 };
 export type ChatEntry = {
   id: string;
@@ -63,6 +67,7 @@ export type ChatResult = {
 export type Session = { session_id: string; title: string; updated_at: string };
 export type Page<T> = { items: T[]; next_cursor: string | null };
 export type FootballStatus = {
+  total_matchweeks?: number | null;
   current_season: string;
   current_matchweek: number;
   last_ingest_at: string | null;
@@ -87,6 +92,7 @@ export type Standing = {
   form: string | null;
 };
 export type Match = {
+  venue?: { name: string } | null;
   match_id: string;
   season: string;
   matchweek: number;

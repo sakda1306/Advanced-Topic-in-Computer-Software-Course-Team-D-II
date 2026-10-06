@@ -27,6 +27,7 @@ _PASS_THROUGH = frozenset(
         ErrorCode.MATCHWEEK_NOT_COMPLETE,
         ErrorCode.QUOTA_EXHAUSTED,
         ErrorCode.INDEX_UPDATE_FAILED,
+        ErrorCode.SIMULATION_UNAVAILABLE,
     }
 )
 

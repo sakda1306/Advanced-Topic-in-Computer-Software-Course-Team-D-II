@@ -14,8 +14,10 @@ class ServiceContractTests(unittest.IsolatedAsyncioTestCase):
         self.calls = []
         self.search_status = 200
         self.predict_status = 200
+        self.queries = []
 
         def respond(request):
+            self.queries.append(dict(request.url.params))
             self.calls.append((request.url.path, json.loads(request.content) if request.content else None,
                                request.headers.get("X-Request-ID")))
             path = request.url.path
@@ -32,8 +34,10 @@ class ServiceContractTests(unittest.IsolatedAsyncioTestCase):
                 payload = json.loads(request.content)
                 return httpx.Response(200, json={"answer": "Arsenal won 1-0",
                                                  "sources": [item["source"] for item in payload["contexts"]]})
-            if path == "/local/predict":
-                return httpx.Response(self.predict_status, json={"content": "Home 40%"})
+            if path == "/football/predict":
+                if self.predict_status != 200:
+                    return httpx.Response(self.predict_status, json={"code": "SIMULATION_UNAVAILABLE"})
+                return httpx.Response(200, json={"content": "Home 40%", "data": {"as_of": None}})
             if path == "/general":
                 return httpx.Response(200, json={"content": "Football rule"})
             if path == "/local/classify":
@@ -63,10 +67,17 @@ class ServiceContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([call[0] for call in self.calls], ["/search", "/generate"])
         self.assertTrue(all(call[2] == "contract-1" for call in self.calls))
 
-    async def test_prediction_501_and_index_503(self):
-        self.predict_status = 501
+    async def test_prediction_calls_football_data_with_team_ids(self):
+        await self.route("ทำนายผล แมนซิตี้ กับ ลิเวอร์พูล")
+        path, _body, request_id = self.calls[0]
+        self.assertEqual(path, "/football/predict")
+        self.assertEqual(request_id, "contract-1")
+        self.assertEqual(self.queries[0], {"home_team_id": "65", "away_team_id": "64"})
+
+    async def test_prediction_503_and_index_503(self):
+        self.predict_status = 503
         result = await self.route("ทำนายผล แมนซิตี้ กับ ลิเวอร์พูล")
-        self.assertEqual(result["trace"]["fallback"], "prediction_unavailable")
+        self.assertEqual(result["trace"]["fallback"], "simulation_down")
         self.search_status = 503
         result = await self.route("เมื่อวานปืนใหญ่ชนะไหม")
         self.assertEqual(result["trace"]["fallback"], "retrieval_down")

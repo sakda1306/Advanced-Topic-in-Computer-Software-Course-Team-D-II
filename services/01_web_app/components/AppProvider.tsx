@@ -18,7 +18,7 @@ import {
   isCancelled,
 } from "../lib/api";
 import { ChatEntry, ChatResult, Session, User } from "../lib/types";
-import { TeamKey, teamFromId, teams } from "../lib/teams";
+import { TeamKey, browseClubs, teamFromId, teams } from "../lib/teams";
 
 function useAppState() {
   const router = useRouter();
@@ -26,6 +26,7 @@ function useAppState() {
   const [checked, setChecked] = useState(false);
   const [authError, setAuthError] = useState<Error>();
   const [teamKey, setTeamKey] = useState<TeamKey>(teams[0].key);
+  const [browsingKey, setBrowsingKey] = useState<string>(teams[0].key);
   const [loggingOut, setLoggingOut] = useState(false);
   const logoutTask = useRef<Promise<void> | null>(null);
   const [teamError, setTeamError] = useState<Error>();
@@ -41,11 +42,14 @@ function useAppState() {
   const [historyError, setHistoryError] = useState<Error>();
   const [draft, setDraft] = useState("");
   const [openSignal, setOpenSignal] = useState(0);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const identity = useRef<string | null>(null);
   const busy = useRef(false);
   const preferenceBusy = useRef(false);
   const conversation = useRef(0);
   const team = teams.find((item) => item.key === teamKey) ?? teams[0];
+  const browsingTeam =
+    browseClubs.find((item) => item.key === browsingKey) ?? browseClubs[0];
 
   const clearAccount = useCallback(() => {
     invalidateAccount();
@@ -54,6 +58,10 @@ function useAppState() {
     busy.current = false;
     preferenceBusy.current = false;
     setUser(null);
+    setTeamKey(teams[0].key);
+    setBrowsingKey(teams[0].key);
+    setOpenSignal(0);
+    setSettingsOpen(false);
     setEntries([]);
     setSessions([]);
     setSessionId(null);
@@ -83,11 +91,13 @@ function useAppState() {
 
   const acceptUser = useCallback(
     (next: User) => {
-      if (identity.current !== next.id) clearAccount();
+      const changed = identity.current !== next.id;
+      if (changed) clearAccount();
       identity.current = next.id;
       setUser(next);
       const favorite = teamFromId(next.favorite_team_id);
-      if (favorite) setTeamKey(favorite.key);
+      setTeamKey(favorite?.key ?? teams[0].key);
+      if (changed) setBrowsingKey(favorite?.key ?? teams[0].key);
       setAuthError(undefined);
       setChecked(true);
       void refreshSessions();
@@ -134,6 +144,19 @@ function useAppState() {
     const data = await api<{ user: User }>(
       "/auth/login",
       body({ username, password }),
+    );
+    acceptUser(data.user);
+    router.replace("/");
+  }
+  async function register(
+    username: string,
+    displayName: string,
+    password: string,
+  ) {
+    if (logoutTask.current) await logoutTask.current;
+    const data = await api<{ user: User }>(
+      "/auth/register",
+      body({ username, display_name: displayName, password }),
     );
     acceptUser(data.user);
     router.replace("/");
@@ -213,10 +236,10 @@ function useAppState() {
       busy.current ||
       (key === teamKey && (!user || user.favorite_team_id === next.teamId))
     )
-      return;
+      return false;
     if (!user) {
       setTeamKey(key);
-      return;
+      return true;
     }
     const epoch = accountEpoch();
     preferenceBusy.current = true;
@@ -229,10 +252,11 @@ function useAppState() {
       });
       setUser(data.user);
       setTeamKey(key);
-      newChat();
+      return true;
     } catch (error) {
       if (epoch === accountEpoch() && !isCancelled(error))
         setTeamError(error as Error);
+      return false;
     } finally {
       if (epoch === accountEpoch()) {
         preferenceBusy.current = false;
@@ -263,16 +287,6 @@ function useAppState() {
       { id: optimisticId, role: "user", content: message },
     ]);
     try {
-      // New accounts may not have a favorite yet. Persist the visible team before routing a question.
-      if (user.favorite_team_id !== team.teamId) {
-        const preferred = await api<{ user: User }>("/me/preferences", {
-          method: "PATCH",
-          body: JSON.stringify({ favorite_team_id: team.teamId }),
-        });
-        if (epoch !== accountEpoch() || ticket !== conversation.current)
-          return false;
-        setUser(preferred.user);
-      }
       const result = await api<ChatResult>(
         "/chat",
         body({ session_id: sessionId, message }),
@@ -326,11 +340,14 @@ function useAppState() {
     authError,
     checkAuth,
     team,
+    browsingTeam,
+    browseTeam: setBrowsingKey,
     teamBusy,
     teamError,
     loggingOut,
     changeTeam,
     login,
+    register,
     logout,
     entries,
     sessions,
@@ -347,6 +364,8 @@ function useAppState() {
     setDraft,
     sendQuestion,
     openSignal,
+    settingsOpen,
+    setSettingsOpen,
     ask,
     updateRating,
   };

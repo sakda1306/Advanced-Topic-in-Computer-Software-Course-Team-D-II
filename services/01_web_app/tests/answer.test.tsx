@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { Answer, Markdown } from "../components/Answer";
-import { dateTime } from "../lib/types";
+import { dateTime, routeLabels } from "../lib/types";
 vi.mock("../components/AppProvider", () => ({
   useApp: () => ({ updateRating: vi.fn() }),
 }));
@@ -75,7 +75,7 @@ it("labels general knowledge without claiming that retrieval found no data", () 
   ).toBeInTheDocument();
   expect(screen.queryByText(/ไม่พบข้อมูลที่ตรง/)).not.toBeInTheDocument();
 });
-it.each(["clarify", "decline"] as const)(
+it.each(["clarify", "decline", "chat"] as const)(
   "does not label %s as a missing evidence failure",
   (route) => {
     render(
@@ -139,4 +139,25 @@ it("does not execute HTML or javascript links and does not rewrite code citation
   expect(container.querySelector('a[href^="javascript:"]')).toBeNull();
   expect(container.querySelector("code")?.textContent).toBe("[1]");
   expect(container.querySelector("code a")).toBeNull();
+});
+it("labels the chat route and shows it in the route filter list", () => {
+  expect(routeLabels.chat).toBe("คุยกับผู้ช่วย");
+  expect(Object.keys(routeLabels)).toContain("chat");
+});
+it("shows a chat answer with no general-knowledge warning", () => {
+  render(
+    <Answer
+      feedback={false}
+      entry={{
+        id: "chat",
+        role: "assistant",
+        content: "สวัสดีครับ ผมคือผู้ช่วยฟุตบอล",
+        route: "chat",
+        sources: [],
+      }}
+    />,
+  );
+  expect(screen.getByText("สวัสดีครับ ผมคือผู้ช่วยฟุตบอล")).toBeInTheDocument();
+  expect(screen.queryByText(/ความรู้ทั่วไป/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/ไม่มีแหล่งอ้างอิงแนบมา/)).not.toBeInTheDocument();
 });

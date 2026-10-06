@@ -1084,6 +1084,29 @@ footer {
   min-height: 52px;
   justify-content: space-between;
 }
+.auth-hint,
+.auth-field-error {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.auth-hint {
+  color: var(--muted);
+}
+.auth-field-error {
+  color: #ff8f8f;
+}
+.auth-switch {
+  margin: 10px 0 0;
+  color: var(--muted);
+}
+.auth-switch a {
+  color: var(--club-bright);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .login-pet {
   width: 144px;
   height: 156px;
@@ -1759,5 +1782,406 @@ footer {
 @media (min-width: 1101px) {
   .dashboard-side {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* PANBALL: persistent club identity with independent browsing controls. */
+.panda-mark {
+  flex-shrink: 0;
+  object-fit: contain;
+}
+.sidebar-settings {
+  margin-top: auto;
+  padding: 18px 0;
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 12px;
+}
+.sidebar-settings button {
+  justify-content: flex-start;
+}
+.sidebar-settings small {
+  color: var(--club-bright);
+  padding: 0 12px;
+}
+.personal-settings {
+  margin: auto 20px auto auto;
+  width: min(460px, calc(100% - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  color: #f4f6fb;
+  background: #10171f;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 24px;
+  box-shadow: 0 24px 100px #000a;
+}
+.personal-settings::backdrop {
+  background: #02060bbf;
+  backdrop-filter: blur(5px);
+}
+.personal-settings .panel-heading {
+  padding: 0;
+}
+.favorite-options {
+  border: 0;
+  padding: 0;
+  margin: 20px 0;
+  display: grid;
+  gap: 10px;
+}
+.favorite-options legend {
+  padding: 0 0 12px;
+  font-weight: 700;
+}
+.favorite-options label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  cursor: pointer;
+}
+.favorite-options .chosen {
+  border-color: var(--club);
+  background: rgba(var(--club-glow), 0.12);
+}
+.favorite-options input {
+  width: 18px;
+  min-height: 18px;
+  accent-color: var(--club);
+}
+.favorite-options img {
+  object-fit: contain;
+}
+.favorite-preview {
+  position: relative;
+  min-height: 185px;
+  border-radius: 12px;
+  padding: 18px;
+  background-size: cover;
+  overflow: hidden;
+}
+.favorite-preview h3 {
+  max-width: 60%;
+  font-size: 23px;
+}
+.preview-swatch {
+  display: block;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid white;
+}
+.preview-pet {
+  position: absolute;
+  right: 8px;
+  bottom: -15px;
+  width: 128px;
+  height: 160px;
+  background-size: 1024px 1760px;
+  background-position: 0 0;
+}
+.settings-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+.team-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  vertical-align: middle;
+}
+.team-name .club-crest {
+  flex: none;
+}
+.crest-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  flex: none;
+}
+.form-badges {
+  display: inline-flex;
+  gap: 6px;
+  white-space: nowrap;
+  padding: 4px;
+}
+.form-dot {
+  width: 23px;
+  height: 23px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-weight: 800;
+  font-size: 17px;
+  color: #fff;
+}
+.form-dot.W {
+  background: #168348;
+}
+.form-dot.D {
+  background: #647080;
+}
+.form-dot.L {
+  background: #c93746;
+}
+.form-dot.latest {
+  outline: 1px solid currentColor;
+  outline-offset: 2px;
+}
+.form-legend {
+  color: var(--muted);
+  font-size: 12px;
+}
+.round-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 20px 0;
+}
+.hub-hero {
+  min-height: 210px;
+}
+.hub-hero h1 {
+  font-family: Inter, "Noto Sans Thai", sans-serif;
+  font-size: clamp(32px, 4vw, 56px);
+  line-height: 1.3;
+  letter-spacing: -1px;
+}
+.hub-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.hub-grid .panel {
+  min-width: 0;
+  padding: 22px;
+  border-radius: 14px;
+}
+.hub-grid h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 19px;
+  margin: 0 0 14px;
+}
+.hub-grid .panel-heading {
+  padding: 0 0 14px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.hub-grid .panel-heading h2 {
+  margin: 0;
+}
+.hub-match {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+  text-align: center;
+  align-items: center;
+  min-height: 205px;
+}
+.hub-match h3 {
+  font-size: 16px;
+}
+.hub-match time {
+  font-size: 13px;
+  color: var(--muted);
+}
+.hub-vs {
+  font-family: "Barlow Condensed", sans-serif;
+  display: block;
+  font-size: 46px;
+  letter-spacing: 3px;
+  color: var(--club-bright);
+}
+.hub-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.hub-actions .primary {
+  flex: 1;
+}
+.form-comparison {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin: 20px 0;
+}
+.form-comparison > div {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+.form-comparison small {
+  color: var(--muted);
+}
+.comparison-table td,
+.comparison-table th {
+  text-align: center;
+  padding: 8px 4px;
+}
+.brief-list {
+  padding: 0;
+  list-style: none;
+  counter-reset: brief;
+  display: grid;
+  gap: 10px;
+}
+.brief-list li {
+  counter-increment: brief;
+  position: relative;
+  padding: 15px 15px 15px 52px;
+  background: #ffffff04;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.brief-list li:before {
+  content: counter(brief);
+  position: absolute;
+  left: 14px;
+  top: 16px;
+  border-radius: 50%;
+  width: 24px;
+  text-align: center;
+  background: var(--club);
+  color: var(--club-ink);
+  font-weight: 800;
+}
+.brief-list span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 5px;
+}
+.hub-evidence summary {
+  cursor: pointer;
+  color: var(--club-bright);
+  padding: 10px 0;
+}
+.hub-evidence a {
+  display: block;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+.hub-evidence small,
+.saved-row small {
+  display: block;
+  color: var(--muted);
+}
+.saved-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  padding: 14px 0;
+}
+.saved-row > div {
+  min-width: 0;
+}
+.saved-row a {
+  font-size: 12px;
+  text-decoration: none;
+}
+.saved-row .team-name {
+  gap: 5px;
+}
+.saved-row .club-crest {
+  width: 22px;
+  height: 22px;
+}
+.latest-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  text-decoration: none;
+  margin: 20px 0;
+}
+.latest-result > strong {
+  font-size: 28px;
+  color: var(--club-bright);
+}
+.latest-result small {
+  flex-basis: 100%;
+  color: var(--muted);
+}
+.chat-context {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0;
+  padding: 8px 14px;
+}
+.mascot-chat {
+  display: flex;
+  flex-direction: column;
+}
+.mascot-chat .chat-panel {
+  flex: 1;
+  min-height: 0;
+}
+.mascot-chat .chat-messages {
+  height: auto;
+  flex: 1;
+  min-height: 0;
+}
+@media (max-width: 1100px) {
+  .hub-grid {
+    grid-template-columns: 1fr;
+  }
+  .hub-match {
+    min-height: 160px;
+  }
+}
+@media (max-width: 600px) {
+  .hub-grid .panel {
+    padding: 16px;
+  }
+  .hub-hero .hero-copy {
+    padding: 24px 18px;
+  }
+  .hub-match {
+    gap: 6px;
+  }
+  .hub-match h3 {
+    font-size: 12px;
+  }
+  .hub-match .club-crest {
+    width: 54px;
+    height: 54px;
+  }
+  .round-nav {
+    flex-wrap: wrap;
+  }
+  .round-nav strong {
+    order: -1;
+    width: 100%;
+    text-align: center;
+  }
+  .form-comparison {
+    gap: 8px;
+  }
+  .personal-settings {
+    margin: auto;
+    padding: 18px;
+  }
+  .match-row .team-name {
+    font-size: 12px;
+    gap: 5px;
+  }
+  .sidebar-settings {
+    padding: 10px 0;
   }
 }

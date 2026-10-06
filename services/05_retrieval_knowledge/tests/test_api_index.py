@@ -87,6 +87,8 @@ async def test_request_id_defaults_to_the_header(client: httpx.AsyncClient) -> N
     [
         doc(doc_id="match-2026-mw6-64-65"),
         doc(doc_id="standings-2026-mw06"),
+        doc(category="player"),  # a match doc_id is not a player doc_id
+        doc(category="player", doc_id="players-2026-team-57-extra"),
         doc(category="news"),
         doc(origin="twitter"),
         doc(text=""),
@@ -335,3 +337,147 @@ async def test_documents_from_football_data_round_trip(client: httpx.AsyncClient
     # Unpublishing the weekly report removes it.
     assert (await client.delete("/index/weekly-2026-mw06")).json() == {"deleted": True}
     assert (await client.get("/index/stats")).json()["documents"] == before["documents"] + 3
+
+
+PLAYER_DOC: dict[str, Any] = {
+    "doc_id": "players-2026-team-57",
+    "title": "Arsenal FC squad 2026",
+    "text": (
+        "Premier League 2026 squad: Arsenal FC. Coach: Mikel Arteta.\n\n"
+        "## Martin Ødegaard\n"
+        "Team: Arsenal FC. Position: Midfielder. Date of birth: 1998-12-17. "
+        "Nationality: Norway.\n\n"
+        "## Bukayo Saka\n"
+        "Team: Arsenal FC. Position: Winger. Date of birth: 2001-09-05. "
+        "Nationality: England."
+    ),
+    "category": "player",
+    "origin": "football-data.org",
+    "season": "2026",
+    "matchweek": None,
+    "team_ids": [57],
+    "date": "2026-09-30",
+    "fetched_at": "2026-09-30T10:00:00+07:00",
+    "url": None,
+}
+
+
+async def test_player_documents_are_indexed_one_chunk_per_player_and_filterable(
+    client: httpx.AsyncClient,
+) -> None:
+    response = await upsert(client, PLAYER_DOC)
+    assert response.status_code == 200, response.text
+    assert response.json()["upserted"] == 1
+    assert response.json()["chunks"] == 3  # the coach preamble plus one chunk per player
+
+    stats = (await client.get("/index/stats")).json()
+    assert stats["by_category"]["player"] == 1
+
+    found = await client.post(
+        "/search",
+        json={
+            "query": "Saka position",
+            "filters": {"category": ["player"], "team_ids": [57]},
+        },
+    )
+    chunks = found.json()["chunks"]
+    assert chunks
+    assert {c["source"]["doc_id"] for c in chunks} == {"players-2026-team-57"}
+    assert chunks[0]["source"]["category"] == "player"
+    assert "Saka" in chunks[0]["text"]
+
+    excluded = await client.post(
+        "/search",
+        json={"query": "Saka position", "filters": {"category": ["match_report"]}},
+    )
+    assert "players-2026-team-57" not in {c["source"]["doc_id"] for c in excluded.json()["chunks"]}
+
+
+async def test_player_document_can_be_replaced_and_deleted(client: httpx.AsyncClient) -> None:
+    await upsert(client, PLAYER_DOC)
+    smaller = {**PLAYER_DOC, "text": PLAYER_DOC["text"].split("\n\n## Bukayo Saka")[0]}
+    replaced = await upsert(client, smaller)
+    assert replaced.json()["chunks"] == 2  # preamble + Martin only: no stale Saka chunk
+    assert (await client.delete("/index/players-2026-team-57")).json() == {"deleted": True}
+
+
+HISTORICAL_DOC: dict[str, Any] = {
+    "doc_id": "hist-team-2015-leicester-city",
+    "title": "Leicester City FC — Premier League 2015/16",
+    "text": (
+        "Final position: 1. P38 W23 D12 L3 GF68 GA36 GD+32 Pts81.\n"
+        "## Sources and license\nSources: openfootball/england (CC0 1.0)."
+    ),
+    "category": "historical",
+    "origin": "openfootball",
+    "topic": "team_season",
+    "season": "2015",
+    "matchweek": None,
+    "team_ids": [],
+    "date": None,
+    "fetched_at": None,
+    "url": "https://github.com/openfootball/england",
+}
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {},
+        {"doc_id": "hist-season-2004", "topic": "season_table", "origin": "fjelstul"},
+        {
+            "doc_id": "hist-h2h-manchester-united-nottm-forest",
+            "topic": "head_to_head",
+            "season": None,
+        },
+        {"doc_id": "hist-club-leicester-city", "topic": "club_record", "season": None},
+        {"doc_id": "hist-records", "topic": "league_records", "season": None},
+    ],
+)
+async def test_historical_documents_are_accepted_and_filterable(
+    client: httpx.AsyncClient, changes: dict[str, Any]
+) -> None:
+    document = {**HISTORICAL_DOC, **changes}
+    response = await upsert(client, document)
+    assert response.status_code == 200, response.text
+    assert (await client.get("/index/stats")).json()["by_category"]["historical"] == 1
+    found = await client.post(
+        "/search",
+        json={"query": "Leicester 2015/16 points", "filters": {"category": ["historical"]}},
+    )
+    assert {c["source"]["doc_id"] for c in found.json()["chunks"]} == {document["doc_id"]}
+
+
+@pytest.mark.parametrize(
+    "doc_id",
+    [
+        "hist-season-04",
+        "hist-team-2004-Arsenal",
+        "hist-team-2004",
+        "hist-h2h-arsenal_chelsea",
+        "hist-club-",
+        "hist-records-2025",
+        "hist-club-Leicester",
+        "trivia-0001",
+    ],
+)
+async def test_historical_doc_ids_keep_their_locked_format(
+    client: httpx.AsyncClient, doc_id: str
+) -> None:
+    response = await upsert(client, {**HISTORICAL_DOC, "doc_id": doc_id})
+    assert response.status_code == 422
+
+
+async def test_wikidata_documents_are_accepted(client: httpx.AsyncClient) -> None:
+    coach = doc(
+        doc_id="coach-2026-team-66",
+        category="player",
+        origin="wikidata",
+        matchweek=None,
+        team_ids=[66],
+        text="Who is the head coach of Manchester United FC? Michael Carrick.",
+    )
+    response = await upsert(client, coach)
+    assert response.status_code == 200
+    found = await doc_ids_found(client, "Manchester United head coach Carrick")
+    assert "coach-2026-team-66" in found

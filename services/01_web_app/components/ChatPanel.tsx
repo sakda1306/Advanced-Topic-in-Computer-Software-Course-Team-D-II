@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { Send, Sparkles } from "lucide-react";
 import { useApp } from "./AppProvider";
 import { Answer } from "./Answer";
+import { SuggestedQuestions } from "./SuggestedQuestions";
 import { ErrorBox, Loading } from "./Ui";
 export function ChatPanel({ surface = "main" }: { surface?: string }) {
   const app = useApp(),
@@ -34,6 +35,7 @@ export function ChatPanel({ surface = "main" }: { surface?: string }) {
                 <br />
                 จากข้อมูลของทีมที่คุณรัก
               </p>
+              {surface === "dock" && <SuggestedQuestions />}
             </div>
           )
         )}

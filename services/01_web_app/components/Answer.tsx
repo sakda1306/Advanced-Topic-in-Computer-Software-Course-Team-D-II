@@ -119,6 +119,20 @@ export function TraceView({ trace }: { trace?: Trace | null }) {
         <dd>{trace.fallback ?? "ไม่มี"}</dd>
       </dl>
       {trace.rewritten_query && <p>คำค้น: {trace.rewritten_query}</p>}
+      {trace.condense && (
+        <p>
+          การตีความคำถามต่อเนื่อง:{" "}
+          {{
+            applied: "ใช้บริบทจากบทสนทนา",
+            unchanged: "ใช้คำถามเดิม",
+            rejected: "ไม่ใช้คำถามที่ตีความใหม่",
+            unavailable: "ขั้นตอนตีความไม่พร้อม ใช้คำถามเดิม",
+          }[trace.condense] ?? trace.condense}
+        </p>
+      )}
+      {trace.standalone_query && (
+        <p>คำถามที่ใช้ค้นหา: {trace.standalone_query}</p>
+      )}
       {trace.filters && <pre>{JSON.stringify(trace.filters, null, 2)}</pre>}
       <ol>
         {trace.steps?.map((step, index) => (

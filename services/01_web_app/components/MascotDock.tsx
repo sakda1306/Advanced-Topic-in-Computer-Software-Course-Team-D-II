@@ -87,8 +87,8 @@ export function MascotDock() {
     return () => clearTimeout(timer);
   }, [wave]);
   useEffect(() => {
-    if (app.openSignal && path !== "/") setOpen(true);
-  }, [app.openSignal, path]);
+    if (app.openSignal) setOpen(true);
+  }, [app.openSignal]);
   useEffect(() => {
     setOpen(false);
   }, [path]);
@@ -172,7 +172,7 @@ export function MascotDock() {
         >
           <header className="panel-heading">
             <div>
-              <strong>{app.team.shortName} Companion</strong>
+              <strong>PANBALL · คุยกับแพนด้า</strong>
               <small>เพื่อนคุยฟุตบอลประจำทีม</small>
             </div>
             <button
@@ -185,6 +185,12 @@ export function MascotDock() {
               <X size={20} />
             </button>
           </header>
+          <p className="chat-context">
+            ทีมโปรด: {app.team.shortName} · ถามถึงทีมอื่นให้ระบุชื่อทีมในคำถาม
+          </p>
+          <button className="text-link" onClick={app.newChat}>
+            แชทใหม่
+          </button>
           <ChatPanel surface="dock" />
         </section>
       )}

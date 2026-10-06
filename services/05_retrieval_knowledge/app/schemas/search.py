@@ -10,7 +10,9 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validat
 from app.search.hybrid import Mode
 from app.search.snapshot import SearchFilters
 
-Category = Literal["trivia", "match_report", "standings", "fixtures", "weekly_report"]
+Category = Literal[
+    "trivia", "match_report", "standings", "fixtures", "weekly_report", "player", "historical"
+]
 
 
 def _reject_nul(value: str) -> str:
@@ -21,6 +23,7 @@ def _reject_nul(value: str) -> str:
 
 
 Text = Annotated[str, AfterValidator(_reject_nul)]
+TopicName = Annotated[str, Field(min_length=1, max_length=200)]
 
 
 class SearchFiltersIn(BaseModel):
@@ -33,6 +36,7 @@ class SearchFiltersIn(BaseModel):
     team_ids: list[int] | None = Field(default=None, min_length=1)
     date_from: date | None = None
     date_to: date | None = None
+    topic: list[TopicName] | None = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
     def _date_order(self) -> SearchFiltersIn:
@@ -48,6 +52,7 @@ class SearchFiltersIn(BaseModel):
             team_ids=tuple(self.team_ids) if self.team_ids else None,
             date_from=self.date_from.isoformat() if self.date_from else None,
             date_to=self.date_to.isoformat() if self.date_to else None,
+            topic=tuple(self.topic) if self.topic else None,
         )
 
 

@@ -226,3 +226,12 @@ async def test_feedback_rating_must_be_plus_or_minus_one(demo: httpx.AsyncClient
         "/api/feedback", json={"message_id": body["message_id"], "rating": 0}
     )
     assert_problem(response, 422, "VALIDATION_ERROR")
+
+
+async def test_chat_route_answer_has_no_sources_or_engines(demo: httpx.AsyncClient) -> None:
+    body = await ask(demo, "สวัสดีครับ")
+    assert body["route"] == "chat"
+    assert body["engines_used"] == []
+    assert body["sources"] == []
+    assert body["data_as_of"] is None
+    assert body["trace"]["intent"] == "chitchat"

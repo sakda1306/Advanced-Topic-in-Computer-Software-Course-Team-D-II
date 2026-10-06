@@ -87,6 +87,13 @@ _ANSWERS: dict[str, dict[str, Any]] = {
         "engines_used": [],
         "intent": "out_of_scope",
     },
+    "chat": {
+        "answer": "สวัสดีครับ ผมคือผู้ช่วยฟุตบอล ถามเรื่องพรีเมียร์ลีกได้เลยครับ",
+        "sources": [],
+        "route": "chat",
+        "engines_used": [],
+        "intent": "chitchat",
+    },
 }
 
 _KEYWORDS = (
@@ -95,6 +102,7 @@ _KEYWORDS = (
     ("clarify", ("ยูไนเต็ด", "united")),
     ("trivia", ("บัลลงดอร์", "ballon", "ประวัติ", "แชมป์")),
     ("general", ("กฎ", "ล้ำหน้า", "offside", "อธิบาย")),
+    ("chat", ("สวัสดี", "ขอบคุณ", "คุณชื่ออะไร")),
 )
 
 

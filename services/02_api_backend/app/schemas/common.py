@@ -6,8 +6,10 @@ from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
-Route = Literal["football_rag", "general_ai", "local_ai", "clarify", "decline"]
-Category = Literal["trivia", "match_report", "standings", "fixtures", "weekly_report"]
+Route = Literal["football_rag", "general_ai", "local_ai", "clarify", "decline", "chat"]
+Category = Literal[
+    "trivia", "match_report", "standings", "fixtures", "weekly_report", "player", "historical"
+]
 Origin = Literal["kb", "football-data.org", "api-football", "generated"]
 Layer = Literal["guard", "rules", "classifier", "llm"]
 Fallback = Literal["retrieval_empty", "retrieval_down", "llm_fallback_provider"]

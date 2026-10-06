@@ -3,18 +3,14 @@ import Link from "next/link";
 import { useApp } from "./AppProvider";
 import { useRemote } from "../lib/use-remote";
 import { dateTime, Match, Standing } from "../lib/types";
+import { TeamCrest } from "./FootballIdentity";
 import { teamFromId } from "../lib/teams";
 import { ErrorBox, Loading } from "./Ui";
 
-function Crest({ id, name }: { id: number; name: string }) {
-  return teamFromId(id) ? (
-    <img src={"/crests/" + id + ".png"} alt="" width={52} height={52} />
-  ) : (
-    <span className="opponent-initials">{name.slice(0, 3)}</span>
-  );
-}
+const Crest = TeamCrest;
 export function ClubOverview() {
-  const { team } = useApp();
+  const app = useApp();
+  const team = app.browsingTeam ?? app.team;
   const fixtures = useRemote<{ matches: Match[] }>(
     "/football/fixtures?team_id=" + team.teamId,
   );

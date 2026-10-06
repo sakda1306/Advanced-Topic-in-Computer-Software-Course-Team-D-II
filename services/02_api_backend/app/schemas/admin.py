@@ -7,7 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.schemas.common import Source, Text, TokenUsage, Trace
+from app.schemas.common import Category, Source, Text, TokenUsage, Trace
 
 
 class UserRef(BaseModel):
@@ -120,6 +120,4 @@ class UserPatch(BaseModel):
 
 
 class ReindexRequest(BaseModel):
-    category: Literal["trivia", "match_report", "standings", "fixtures", "weekly_report"] | None = (
-        None
-    )
+    category: Category | None = None

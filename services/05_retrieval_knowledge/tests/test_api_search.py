@@ -89,6 +89,12 @@ async def test_filters_apply(client: httpx.AsyncClient) -> None:
     assert {c["source"]["category"] for c in body["chunks"]} == {"standings"}
 
 
+async def test_topic_filter_applies(client: httpx.AsyncClient) -> None:
+    body = (await search(client, query="World Cup Spain", filters={"topic": ["World Cup"]})).json()
+    assert body["chunks"]
+    assert {c["source"]["topic"] for c in body["chunks"]} == {"World Cup"}
+
+
 async def test_nothing_found_is_200_with_no_chunks(client: httpx.AsyncClient) -> None:
     response = await search(client, query="Arsenal", filters={"season": "1999"})
     assert response.status_code == 200
@@ -126,6 +132,8 @@ async def test_every_mode_answers(client: httpx.AsyncClient, mode: str) -> None:
         {"query": "Arsenal", "filters": {"matchweek": 39}},
         {"query": "Arsenal", "filters": {"date_from": "2026-09-22", "date_to": "2026-09-20"}},
         {"query": "Arsenal", "filters": {"date_from": "yesterday"}},
+        {"query": "Arsenal", "filters": {"topic": []}},
+        {"query": "Arsenal", "filters": {"topic": [""]}},
     ],
 )
 async def test_invalid_requests_are_422(client: httpx.AsyncClient, body: dict[str, Any]) -> None:

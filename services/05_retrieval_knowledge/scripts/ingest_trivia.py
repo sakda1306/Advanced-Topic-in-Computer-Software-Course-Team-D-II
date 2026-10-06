@@ -14,7 +14,7 @@ from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, get_logger
 from app.index.service import IndexService
 from app.kb.store import KnowledgeStore
-from app.kb.trivia import load_trivia_documents
+from app.kb.trivia import load_nickname_documents, load_trivia_documents
 from app.search.embedder import Embedder, SentenceTransformerEmbedder
 
 log = get_logger(__name__)
@@ -27,15 +27,17 @@ class IngestResult:
     duplicates: list[int]
     conflicts: list[list[int]]
     index_version: str | None
+    nicknames: int = 0
 
 
 async def ingest(settings: Settings, embedder: Embedder) -> IngestResult:
     documents, report = load_trivia_documents(settings.trivia_file)
+    nicknames = load_nickname_documents(settings.nickname_file)[0] if settings.nickname_file else []
     store = KnowledgeStore(settings.kb_db_path)
     try:
         index = IndexService(store, embedder)
         await index.load()
-        upserted = await index.upsert(documents)
+        upserted = await index.upsert(documents + nicknames)
     finally:
         store.close()
     result = IngestResult(
@@ -44,11 +46,13 @@ async def ingest(settings: Settings, embedder: Embedder) -> IngestResult:
         duplicates=report.duplicates,
         conflicts=report.conflicts,
         index_version=upserted.index_version,
+        nicknames=len(nicknames),
     )
     log.info(
         "trivia_ingested",
         parsed=result.parsed,
         kept=result.kept,
+        nicknames=result.nicknames,
         duplicates=len(result.duplicates),
         conflicts=result.conflicts,
         index_version=result.index_version,

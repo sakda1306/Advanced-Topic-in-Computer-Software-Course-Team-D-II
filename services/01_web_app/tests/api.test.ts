@@ -1,5 +1,23 @@
 import { expect, it, vi } from "vitest";
 import { api, invalidateAccount, submitFeedback } from "../lib/api";
+it("does not treat an unauthenticated session check as an expired login", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () => new Response('{"detail":"unauthenticated"}', { status: 401 }),
+    ),
+  );
+  const dispatch = vi.spyOn(window, "dispatchEvent");
+  await expect(api("/auth/me")).rejects.toMatchObject({ status: 401 });
+  await expect(api("/auth/register")).rejects.toMatchObject({ status: 401 });
+  expect(dispatch).not.toHaveBeenCalledWith(
+    expect.objectContaining({ type: "pitchside:expired" }),
+  );
+  await expect(api("/history/old")).rejects.toMatchObject({ status: 401 });
+  expect(dispatch).toHaveBeenCalledWith(
+    expect.objectContaining({ type: "pitchside:expired" }),
+  );
+});
 it("retries feedback once only for MESSAGE_NOT_READY", async () => {
   const fetcher = vi
     .fn()

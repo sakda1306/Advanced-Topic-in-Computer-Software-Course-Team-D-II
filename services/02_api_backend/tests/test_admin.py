@@ -255,6 +255,25 @@ async def test_kb_delete_and_reindex(admin: httpx.AsyncClient) -> None:
     assert actions[:3] == ["kb.reindex", "kb.delete", "kb.delete"]
 
 
+async def test_reindex_accepts_the_player_category(admin: httpx.AsyncClient) -> None:
+    response = await admin.post("/api/admin/kb/reindex", json={"category": "player"})
+    assert response.status_code == 202
+    entry = (await audit_actions(admin))[0]
+    assert (entry["action"], entry["target"]) == ("kb.reindex", "player")
+
+
+async def test_reindex_accepts_the_historical_category(admin: httpx.AsyncClient) -> None:
+    response = await admin.post("/api/admin/kb/reindex", json={"category": "historical"})
+    assert response.status_code == 202
+    entry = (await audit_actions(admin))[0]
+    assert (entry["action"], entry["target"]) == ("kb.reindex", "historical")
+
+
+async def test_reindex_still_rejects_unknown_categories(admin: httpx.AsyncClient) -> None:
+    response = await admin.post("/api/admin/kb/reindex", json={"category": "news"})
+    assert response.status_code == 422
+
+
 async def test_audit_filter_by_action(admin: httpx.AsyncClient) -> None:
     await admin.post("/api/admin/pipeline/ingest", json={"scope": "all"})
     await admin.post("/api/admin/reports/generate", json={})

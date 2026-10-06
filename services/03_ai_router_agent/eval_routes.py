@@ -21,8 +21,13 @@ class EvalClients:
     async def general(self, payload, request_id):
         return {"content": "Sample explanation"}
 
-    async def predict(self, payload, request_id):
-        return {"content": "Sample prediction"}
+    async def predict_match(self, home_team_id, away_team_id, request_id):
+        return {"content": "Sample prediction", "data": {"as_of": None}}
+
+    async def season_simulation(self, request_id):
+        return {"as_of": None, "n_sims": 10000, "stale": False,
+                "teams": [{"team_id": 57, "short_name": "Arsenal", "points": 12, "expected_points": 74.0,
+                           "p_title": 0.3, "p_top4": 0.8, "p_relegation": 0.0}]}
 
     async def generate(self, payload, request_id):
         return {"answer": "Sample answer", "sources": [item["source"] for item in payload["contexts"]]}
@@ -33,11 +38,17 @@ class EvalClients:
     async def llm_decide(self, query, request_id):
         raise AssertionError("All benchmark questions must use a deterministic rule or guard")
 
+    async def condense(self, query, history, request_id):
+        return {"standalone_query": query, "changed": False}
+
+    async def translate(self, text, request_id):
+        return {"query": text}
+
 
 async def evaluate():
     cases = [json.loads(line) for line in (ROOT / "tests" / "routing_cases.jsonl").read_text(encoding="utf-8").splitlines()]
-    if len(cases) != 41:
-        raise ValueError("Expected 41 routing cases")
+    if len(cases) != 58:
+        raise ValueError("Expected 58 routing cases")
     teams = TeamDirectory.from_file(ROOT / "data" / "team_aliases.json")
     router = Router(EvalClients(), teams)
     failures = []

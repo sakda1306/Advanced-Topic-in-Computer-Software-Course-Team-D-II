@@ -83,3 +83,20 @@ def test_general_both_providers_down_returns_503_problem_json():
 def test_general_missing_query_returns_422():
     r = client.post("/general", json={"request_id": "req-4", "language": "th"})
     assert r.status_code == 422
+
+def test_thai_prompt_reads_questions_as_football_and_uses_the_team_note():
+    from app.main import SYSTEM_PROMPT_TH
+
+    # "ล้ำหน้า" was answered as "ahead of others" instead of offside.
+    assert "ล้ำหน้า = offside" in SYSTEM_PROMPT_TH
+    # The router names the club behind a nickname in this note (03 router.with_team_note).
+    assert "ชื่อทีมในคำถาม" in SYSTEM_PROMPT_TH
+    assert "ห้ามแต่งขึ้นเอง" in SYSTEM_PROMPT_TH
+    assert "ครับ" in SYSTEM_PROMPT_TH
+
+
+def test_english_prompt_uses_the_team_note():
+    from app.main import SYSTEM_PROMPT_EN
+
+    assert "Teams named in the question" in SYSTEM_PROMPT_EN
+    assert "offside" in SYSTEM_PROMPT_EN

@@ -15,6 +15,7 @@ class ErrorCode(StrEnum):
     NOT_FOUND = "NOT_FOUND"
     METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED"
     MESSAGE_NOT_READY = "MESSAGE_NOT_READY"
+    USERNAME_TAKEN = "USERNAME_TAKEN"
     CANNOT_MODIFY_SELF = "CANNOT_MODIFY_SELF"
     REPORT_NOT_EDITABLE = "REPORT_NOT_EDITABLE"
     REPORT_ALREADY_PUBLISHED = "REPORT_ALREADY_PUBLISHED"
@@ -28,6 +29,7 @@ class ErrorCode(StrEnum):
     INTERNAL_ERROR = "INTERNAL_ERROR"
     ROUTER_UNAVAILABLE = "ROUTER_UNAVAILABLE"
     FOOTBALL_DATA_UNAVAILABLE = "FOOTBALL_DATA_UNAVAILABLE"
+    SIMULATION_UNAVAILABLE = "SIMULATION_UNAVAILABLE"
     RETRIEVAL_UNAVAILABLE = "RETRIEVAL_UNAVAILABLE"
     INDEX_UPDATE_FAILED = "INDEX_UPDATE_FAILED"
     ROUTER_TIMEOUT = "ROUTER_TIMEOUT"
@@ -50,6 +52,7 @@ ERROR_SPECS: dict[ErrorCode, ErrorSpec] = {
     ErrorCode.MESSAGE_NOT_READY: ErrorSpec(
         409, "Message not ready", "คำตอบนี้ยังบันทึกไม่เสร็จ ลองใหม่อีกครั้ง"
     ),
+    ErrorCode.USERNAME_TAKEN: ErrorSpec(409, "Username taken", "ชื่อผู้ใช้นี้ถูกใช้แล้ว"),
     ErrorCode.CANNOT_MODIFY_SELF: ErrorSpec(
         409, "Cannot modify self", "แก้ role หรือระงับบัญชีของตัวเองไม่ได้"
     ),
@@ -74,6 +77,9 @@ ERROR_SPECS: dict[ErrorCode, ErrorSpec] = {
     ),
     ErrorCode.FOOTBALL_DATA_UNAVAILABLE: ErrorSpec(
         502, "Football data unavailable", "บริการข้อมูลฟุตบอลไม่พร้อมใช้งานชั่วคราว"
+    ),
+    ErrorCode.SIMULATION_UNAVAILABLE: ErrorSpec(
+        503, "Simulation unavailable", "ระบบทำนายผลไม่พร้อมใช้งานตอนนี้"
     ),
     ErrorCode.RETRIEVAL_UNAVAILABLE: ErrorSpec(
         502, "Retrieval unavailable", "บริการคลังความรู้ไม่พร้อมใช้งานชั่วคราว"

@@ -10,7 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.kb.documents import Document, doc_id_matches
 from app.schemas.search import Category, Text
 
-Origin = Literal["kb", "football-data.org", "api-football", "generated"]
+Origin = Literal[
+    "kb", "football-data.org", "api-football", "generated", "openfootball", "fjelstul", "wikidata"
+]
 
 MAX_DOCUMENTS = 100
 

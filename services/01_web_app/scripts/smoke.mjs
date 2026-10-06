@@ -65,6 +65,7 @@ if (outage) {
     "/football/standings",
     "/football/fixtures",
     "/football/reports",
+    "/football/simulation",
     "/admin",
     "/admin/pipeline",
     "/admin/feedback",
@@ -75,7 +76,7 @@ if (outage) {
     const { result } = await guest(path);
     assert.match(result, /<html/);
   }
-  passed("All 11 page routes served");
+  passed("All 12 page routes served");
   for (const pet of [
     "arsenal",
     "chelsea",

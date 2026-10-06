@@ -134,7 +134,7 @@ A: Clarence Seedorf
 
 [หมวด: English Premier League]
 Q: Who holds the record for the most goals scored in a single English Premier League season?
-A: Mohamed Salah
+A: Erling Haaland
 
 [หมวด: English Premier League]
 Q: Which club has the most consecutive English Premier League wins?
@@ -1018,7 +1018,7 @@ A: Hakan Şükür
 
 [หมวด: English Premier League]
 Q: Who holds the record for the most goals scored in a single Premier League season?
-A: Mohamed Salah
+A: Erling Haaland
 
 [หมวด: Copa Libertadores]
 Q: Who is the all-time top scorer of the Copa Libertadores?
@@ -1994,7 +1994,7 @@ A: Manchester United
 
 [หมวด: English Premier League]
 Q: Who holds the record for the most goals in a single Premier League season?
-A: Mohamed Salah
+A: Erling Haaland
 
 [หมวด: English Premier League]
 Q: Who has made the most appearances in the English Premier League?

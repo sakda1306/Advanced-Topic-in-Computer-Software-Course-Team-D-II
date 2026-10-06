@@ -7,12 +7,14 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Path, Query
 
 from app.api.deps import ContainerDep, CurrentUser
+from app.core.errors import AppError, ErrorCode
 
 router = APIRouter(prefix="/api/football", tags=["football"])
 
 Season = Annotated[str | None, Query(pattern=r"^\d{4}$")]
 Matchweek = Annotated[int | None, Query(ge=1, le=38)]
 MatchStatus = Literal["SCHEDULED", "LIVE", "FINISHED", "POSTPONED", "CANCELLED"]
+TeamId = Annotated[int, Query(ge=1)]
 
 
 @router.get("/standings")
@@ -41,6 +43,22 @@ async def match(
     match_id: Annotated[str, Path(max_length=64, pattern=r"^[A-Za-z0-9-]+$")],
 ) -> Any:
     return await container.football.match(match_id)
+
+
+@router.get("/predict")
+async def predict(
+    container: ContainerDep, _user: CurrentUser, home_team_id: TeamId, away_team_id: TeamId
+) -> Any:
+    if home_team_id == away_team_id:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR, detail="home_team_id และ away_team_id ต้องเป็นคนละทีม"
+        )
+    return await container.football.prediction(home_team_id, away_team_id)
+
+
+@router.get("/simulation")
+async def simulation(container: ContainerDep, _user: CurrentUser, season: Season = None) -> Any:
+    return await container.football.simulation(season)
 
 
 @router.get("/reports/weekly")

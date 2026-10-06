@@ -22,6 +22,8 @@ class Settings(BaseSettings):
 
     kb_db_path: str = "/data/kb.sqlite"
     trivia_file: str = "data/football_trivia_qa.txt"
+    # Thai club nicknames and where they come from; empty = not loaded.
+    nickname_file: str = "data/thai_nicknames_qa.txt"
     aliases_file: str = "data/team_aliases.json"
     # Nicknames from 07 (CONTRACT §7); empty = use the bundled file only.
     football_data_url: str = "http://football-data:8000"

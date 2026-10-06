@@ -166,6 +166,8 @@ def reset_state() -> None:
     INDEX_DOCS.clear()
     INDEX_DOCS.update(docs)
     JOBS.clear()
+    PREDICT_CALLS.clear()
+    SIMULATION_STATE.update(calls=0, stale=False)
 
 
 def _job(kind: str, scope: str | None, triggered_by: str) -> dict[str, Any]:
@@ -224,6 +226,64 @@ async def fixtures(
         and (status is None or m["status"] == status)
     ]
     return {"season": season, "fetched_at": FETCHED_AT, "matches": matches}
+
+
+PREDICT_CALLS: list[tuple[int, int]] = []
+
+
+@app.get("/football/predict", response_model=None)
+async def predict(home_team_id: int, away_team_id: int) -> dict[str, Any] | JSONResponse:
+    PREDICT_CALLS.append((home_team_id, away_team_id))
+    if home_team_id == 999 or away_team_id == 999:
+        return _problem(503, "SIMULATION_UNAVAILABLE", "ระบบทำนายผลไม่พร้อมใช้งานตอนนี้")
+    return {
+        "engine": "local_ai",
+        "content": "Arsenal ชนะ 48%",
+        "data": {
+            "home_win": 0.48,
+            "draw": 0.26,
+            "away_win": 0.26,
+            "home_xg": 1.6,
+            "away_xg": 1.0,
+            "most_likely_score": {"home": 1, "away": 0},
+            "method": "poisson-v1",
+            "matches_used": 43,
+            "as_of": FETCHED_AT,
+        },
+        "sources": [],
+        "model": "poisson-v1",
+        "latency_ms": 3,
+        "token_usage": {"input": 0, "output": 0},
+    }
+
+
+SIMULATION_STATE: dict[str, Any] = {"calls": 0, "stale": False}
+
+
+@app.get("/football/simulation")
+async def simulation(season: str | None = None) -> dict[str, Any]:
+    SIMULATION_STATE["calls"] += 1
+    return {
+        "season": season or "2026",
+        "as_of": FETCHED_AT,
+        "computed_at": FETCHED_AT,
+        "stale": SIMULATION_STATE["stale"],
+        "n_sims": 10000,
+        "model": "poisson-mc-v1",
+        "teams": [
+            {
+                "team_id": 57,
+                "name": "Arsenal FC",
+                "short_name": "Arsenal",
+                "points": 12,
+                "expected_points": 74.3,
+                "p_title": 0.31,
+                "p_top4": 0.82,
+                "p_relegation": 0.0,
+                "position_probs": [0.31, 0.69],
+            }
+        ],
+    }
 
 
 @app.get("/football/matches/{match_id}", response_model=None)

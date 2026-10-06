@@ -52,7 +52,7 @@ function Dashboard() {
           <p>ติดตามการทำงานของผู้ช่วยฟุตบอล</p>
         </div>
       </section>
-      <PageTitle eyebrow="ADMIN CONSOLE" title="ภาพรวมระบบ">
+      <PageTitle eyebrow="ADMIN CONSOLE · สถิติทั้งระบบ" title="ภาพรวมระบบ">
         <label>
           ช่วงเวลา
           <select
